@@ -9,22 +9,20 @@ uploaded to the product root.
 | Field | Value |
 |---|---|
 | Title | GB UPRN Open Resolver: points, buildings, land parcels and streets for 41.6 million UPRNs |
-| Product ID | `uk-uprn-open` (used in the README example URLs; cannot be renamed later) |
-| Owner account | `<account>` (your Source username or organisation) |
-| Data connection | Source-managed storage, us-west-2 |
+| Product ID | `uprn-resolver` (https://source.coop/avineon-tensing/uprn-resolver; cannot be renamed later) |
+| Owner account | `avineon-tensing` (Avineon Tensing organisation) |
+| Data connection | Source-managed storage. Prefer Europe for UK users: eu-west-2 (London) or eu-west-1 (Ireland); check it in the product settings |
 | Visibility | Unlisted until the upload is verified, then Listed |
 
-**Description** (456 characters, limit 500):
+**Description** (232 characters, limit 500; the README below it carries the detail):
 
-> Every Great Britain UPRN (41.6 million) resolved to a point, TOID, building outline or land parcel, street name
-> and statistical geographies, with a tested confidence label on each answer. Built only from open data: OS
-> OpenData, ONS, HM Land Registry, Registers of Scotland and EPC under OGL v3, plus optional Microsoft, Overture and
-> OpenStreetMap layers under their own licences. GeoParquet per local authority, STAC catalogue and PMTiles. No
-> address text.
+> Every Great Britain UPRN (41.6 million) linked to a point, building outline or land parcel, street and census
+> areas, with a confidence label on each answer. Built only from open data, mostly under the OGL. GeoParquet, STAC
+> and PMTiles.
 
-**Tags** (18 of 20): `opendata`, `uprn`, `geoparquet`, `ogl`, `great-britain`, `united-kingdom`, `addresses`,
+**Tags** (17 of 20): `opendata`, `uprn`, `geoparquet`, `ogl`, `great-britain`, `united-kingdom`, `addresses`,
 `buildings`, `building-footprints`, `land-parcels`, `inspire`, `epc`, `ordnance-survey`, `toid`, `stac`, `pmtiles`,
-`openstreetmap`, `geocoding`
+`geocoding`
 
 ## Short intro
 
@@ -46,10 +44,11 @@ An open lookup table, one row per UPRN, covering England, Scotland and Wales. Fo
 - **How specific that is:** `property` (the outline holds this UPRN alone), `small_group` (two to five UPRNs) or
   `block` (more than five), plus a 0 to 100 quality score and plain-language quality flags.
 - **Context:** the TOID and street (USRN and street name), census output area, LSOA and MSOA, local authority, EPC
-  property type and built form, a business name where one matches, and recent house sale prices.
+  property type and built form, a business name where one matches, and HM Land Registry Price Paid sale IDs.
 
-It ships as GeoParquet, one file per table per local authority, with a STAC catalogue for discovery and PMTiles for
-web maps. A typical lookup reads one small file over HTTPS; nothing needs to be downloaded in full.
+It ships as two tables per UPRN (`resolved_open` to start with, `uprn` for more detail) and the shapes they point
+to (OS buildings, land parcels and a few Microsoft footprints), as GeoParquet with one file per local authority, a
+STAC catalogue for discovery and PMTiles for web maps. A typical lookup reads one small file over HTTPS; nothing needs to be downloaded in full.
 
 ## Why it exists
 
@@ -74,7 +73,7 @@ approximation that complements them.
 - **Energy and retrofit.** Combine EPC built form and property type with a footprint or parcel to estimate roof
   and wall areas, or to target areas for insulation, heat pumps or solar.
 - **Housing and planning.** Count dwellings per building or parcel, find properties sharing a footprint (flats,
-  conversions), and link sale prices to the land they relate to.
+  conversions), and link Price Paid sales to the land they relate to.
 - **Risk and resilience.** Overlay flood, subsidence or heat maps on building outlines and parcels instead of
   points, to see which properties a hazard actually touches.
 - **Networks and services.** Count premises per building or street for broadband, utilities, waste collection or
@@ -97,17 +96,16 @@ Full statistics, by nation and by source, are in the README.
 ## What it does not do
 
 - **No full addresses.** House numbers, flat numbers and postcodes are not open in Great Britain; they are only in
-  AddressBase and Royal Mail's PAF. OpenStreetMap house numbers are offered separately where they exist (15% of
-  UPRNs).
+  AddressBase and Royal Mail's PAF.
 - **Outlines are approximate.** In dense areas the best open outline can be a whole block or a terrace; the
   confidence label says when.
 - **Great Britain only.** Northern Ireland has no open UPRNs.
 
 ## Licence and contact
 
-The core is under the Open Government Licence v3.0, with attribution to Ordnance Survey, ONS, HM Land Registry,
-Registers of Scotland and the EPC registers. Microsoft, Overture and OpenStreetMap layers sit in separate folders
-under their own licences (CDLA-Permissive-2.0, per-provider Overture terms, ODbL). The code is open source under
+Almost everything is under the Open Government Licence v3.0, with attribution to Ordnance Survey, ONS, HM Land
+Registry, Registers of Scotland and the EPC registers. The Microsoft footprints are CDLA-Permissive-2.0 and the
+business names follow Overture's per-provider terms; there is no share-alike data. The code is open source under
 the Apache License 2.0: [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver).
 
 A side project by staff at Avineon Tensing, not an official Avineon Tensing product, and not produced or endorsed by

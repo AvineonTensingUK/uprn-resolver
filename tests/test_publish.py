@@ -584,3 +584,39 @@ def test_ppd_local_rejected_in_release_tree(tmp_path):
     _write(root / "ppd_open" / "lad=E1" / "ppd_open.parquet", {"uprn": [1], "street": ["x"]}, geo=False)
     probs = P.check_release_tree(root)
     assert any("local-only table" in p for p in probs)
+
+
+def test_lean_release(out, tmp_path):
+    """LEAN_TABLES ships only the answer per UPRN and its shapes; MS footprints are cut to the used ones."""
+    for lad, x0 in (("E1", 500000), ("E2", 600000)):
+        d = out / f"lad={lad}"
+        _write(
+            d / "resolved_open.parquet",
+            {
+                "uprn": [1, 0],
+                "geometry": _points(2, x0),
+                "street_name": ["a", "b"],
+                "street_source": ["os", "os"],
+                "locality": ["l", "m"],
+                "best_outline_source": ["ms_building", None],
+                "best_outline_id": ["m", None],
+                "poi_name": ["Shop", None],
+            },
+        )
+        _write(
+            d / "outline_ms_buildings.parquet",
+            {
+                "ms_building_id": ["m", "unused"],
+                "geometry": [wkb.dumps(box(x0, 1, x0 + 5, 6)), wkb.dumps(box(x0 + 10, 1, x0 + 15, 6))],
+            },
+        )
+    P.assemble(out, "r", tmp_path / "rel", threads=1, stac=False, lean=True)
+    root = tmp_path / "rel" / "r"
+    shipped = {p.name for p in root.iterdir() if p.is_dir()}
+    assert shipped == {"uprn", "buildings", "resolved_open", "outline_ms_buildings"}
+    ids = pq.read_table(root / "outline_ms_buildings" / "lad=E1" / "outline_ms_buildings.parquet").column(
+        "ms_building_id"
+    )
+    assert ids.to_pylist() == ["m"]
+    assert (root / "outline_ms_buildings" / "LICENCE.txt").exists()
+    assert not (tmp_path / "rel" / ".ms_used").exists()

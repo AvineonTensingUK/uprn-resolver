@@ -228,6 +228,9 @@ def test_publish_dry_run_default(monkeypatch):
     assert calls[0][2]["dry_run"] is True and calls[0][1][:3] == (Path("data/out"), "2026-10", "s3://a/b/")
     cli.main(["publish", "--release", "r", "--dest", "s3://a/b/", "--execute"])
     assert calls[1][2]["dry_run"] is False
+    assert calls[0][2]["lean"] is True
+    cli.main(["publish", "--release", "r", "--dest", "s3://a/b/", "--full"])
+    assert calls[2][2]["lean"] is False
 
 
 def test_national_validate(monkeypatch, capsys):
@@ -465,6 +468,7 @@ def test_release_extras_command(monkeypatch, tmp_path):
     _fake(monkeypatch, "stac", calls, build_stac={})
     _fake(monkeypatch, "tiles", calls, build={"features": 1})
     sys.modules["uprn_resolver.tiles"].KINDS = {"uprn": 1}
+    sys.modules["uprn_resolver.tiles"].RELEASE_KINDS = ("uprn",)
     argv = ["release-extras", "--release", "r", "--stage-dir", str(tmp_path / "rel")]
     assert cli.main(argv) == 0
     assert [c[0] for c in calls] == ["stac.build_stac", "publish.write_manifest", "publish.write_latest"]

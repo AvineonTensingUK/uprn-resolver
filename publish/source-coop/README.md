@@ -4,13 +4,13 @@ Every Unique Property Reference Number (UPRN) in Great Britain, 41,593,127 of th
 an approximate building outline, a land parcel, a street name and statistical geographies. Each answer comes with
 a measure of how specific it is, so you can tell a house's own outline from a city block.
 
-Built only from open data. The core is under the Open Government Licence v3.0. Optional layers from Microsoft,
-Overture Maps and OpenStreetMap sit in their own folders under their own licences. No house numbers, building
-names or postcodes are published.
+Built only from open data, almost all under the Open Government Licence v3.0. Two small parts carry their own
+open licences, both labelled: Microsoft building footprints, used where no OS building or land parcel fits, and
+business names from Overture Maps. No house numbers, building names or postcodes are published.
 
 - **Coverage:** England, Scotland and Wales, 350 local authorities. Northern Ireland has no open UPRNs (see below).
 - **Format:** GeoParquet 1.1, one file per table per local authority, plus a STAC catalogue and PMTiles.
-- **Release:** `2026-10`, a one-off snapshot. There may be further releases; if so, `latest.json` will name the
+- **Release:** `2026-11`, a one-off snapshot. There may be further releases; if so, `latest.json` will name the
   newest.
 - **Code and method:** [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver), open source under the
   Apache License 2.0
@@ -44,9 +44,28 @@ Look up one UPRN with DuckDB:
 INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;
 
 SELECT uprn, street_name, locality, outline_confidence, best_outline_source, lsoa, quality
-FROM read_parquet('https://data.source.coop/<account>/uk-uprn-open/2026-10/resolved_open/lad=*/resolved_open.parquet',
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/2026-11/resolved_open/lad=*/resolved_open.parquet',
                   hive_partitioning = true)
 WHERE uprn = 5300000000;
+```
+
+Every UPRN points to the shape of its best outline. `best_outline_source` says which table holds it, and
+`best_outline_id` is the key:
+
+| `best_outline_source` | Table | Key |
+|---|---|---|
+| `inspire_parcel`, `ros_parcel` | `parcels/` | `parcel_id` |
+| `openmap_building` | `buildings/` | `building_id` |
+| `ms_building` | `outline_ms_buildings/` | `ms_building_id` |
+
+For example, the land parcels behind UPRNs in Islington:
+
+```sql
+SELECT r.uprn, r.outline_confidence, p.parcel_area_m2, p.geometry
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/2026-11/resolved_open/lad=E09000019/resolved_open.parquet') r
+JOIN read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/2026-11/parcels/lad=E09000019/parcels.parquet') p
+  ON p.parcel_id = r.best_outline_id
+WHERE r.best_outline_source = 'inspire_parcel';
 ```
 
 Every file is partitioned by local authority (`lad=<code>`). Filtering on `lad` reads one file instead of 350, and
@@ -60,29 +79,26 @@ Helmert approximation.
 
 | Folder | One row per | Contents | Licence |
 |---|---|---|---|
-| `resolved_open/` | UPRN | **Start here.** Best answer per UPRN: point, best outline and its confidence, street, EPC type, business name, quality flags | OGL v3.0, plus labelled Overture and Microsoft columns |
-| `uprn/` | UPRN | Core table: point, TOID, matched OS building, parcel, USRN, street, OA / LSOA / MSOA | OGL v3.0 |
-| `buildings/` | building | OS OpenMap Local outlines | OGL v3.0 |
-| `parcels/` | land parcel | Parcel polygons that contain a UPRN: HM Land Registry INSPIRE (England and Wales) and Registers of Scotland. The shape behind a parcel-based best outline | OGL v3.0, with HMLR, OS and RoS statements |
-| `epc/` | UPRN | Energy Performance Certificate fields (no address columns) | OGL v3.0 |
-| `provenance/` | UPRN | Street and postcode QA (Open USRN, Code-Point Open, Open Roads), with no postcode text | OGL v3.0 |
-| `ppd_open/`, `ppd_open_summary/` | sale / UPRN | HM Land Registry Price Paid: only sales in HM Land Registry's own UPRN lookup, published since August 2026 (mostly 2025 and 2026 sales) | OGL v3.0 |
-| `poi/` | place | Overture Maps places matched to UPRNs (business names) | CDLA-Permissive-2.0, Apache-2.0 or CC0, per provider |
-| `outline_ms/`, `outline_ms_buildings/` | UPRN / footprint | Microsoft building footprints matched to UPRNs | CDLA-Permissive-2.0 |
-| `streets_odbl/` | UPRN | OpenStreetMap street names and house numbers | **ODbL-1.0** |
-| `outline_odbl/`, `outline_odbl_buildings/` | UPRN / building | OpenStreetMap building outlines matched to UPRNs | **ODbL-1.0** |
-| `tiles/` | | PMTiles vector tiles for web maps, one archive per licence | as for the source table |
+| `resolved_open/` | UPRN | **Start here.** Best answer per UPRN: point, best outline and its confidence, street, local authority and LSOA, EPC property type and built form, business name, quality score and flags | OGL v3.0; the business name columns are Overture Maps (per provider) |
+| `uprn/` | UPRN | More detail per UPRN: TOID, matched OS building, land parcel, USRN, OA / LSOA / MSOA, EPC certificate and Price Paid sale IDs | OGL v3.0 |
+| `buildings/` | building | OS OpenMap Local building outlines | OGL v3.0 |
+| `parcels/` | land parcel | Land parcels that contain a UPRN: HM Land Registry INSPIRE (England and Wales) and Registers of Scotland | OGL v3.0, with HMLR, OS and RoS statements |
+| `outline_ms_buildings/` | footprint | Microsoft building footprints that are some UPRN's best outline (11% of UPRNs) | CDLA-Permissive-2.0 |
+| `tiles/` | | PMTiles for web maps: `uprn_points`, `outlines_ogl` (OS buildings) and `parcels` | OGL v3.0 |
 | `stac/` | | Static STAC catalogue: one collection per table, one item per local authority | |
 
-Also in each release: `README.md` (full column-by-column schemas), `LICENCE.md`, `stats.json` (per-authority
-statistics), `lad_index.parquet`, and `release_manifest.json` (size, sha256 and row count of every file, plus
-source dataset versions).
+Also in each release: `README.md` (column-by-column schemas), `LICENCE.md`, `accuracy.json` (the OpenStreetMap
+check below), `stats.json` (per-authority statistics), `lad_index.parquet` (each authority's extent), and
+`release_manifest.json` (size, sha256 and row count of every file, plus source dataset versions).
 
-Total size is about 12 GB of Parquet, plus about 7 GB of optional PMTiles.
+To keep the release simple, some things are left out. Each is free from its publisher, and the
+[code](https://github.com/AvineonTensingUK/uprn-resolver) can rebuild them locally: full EPC certificates, HM
+Land Registry Price Paid records, Overture Maps places, the complete Microsoft footprint set, and OpenStreetMap
+streets, house numbers and buildings.
 
 ## Statistics
 
-Figures for release `2026-10`, over every UPRN in the ONS UPRN Directory. Per-authority figures are in `stats.json`.
+Figures for release `2026-11`, over every UPRN in the ONS UPRN Directory. Per-authority figures are in `stats.json`.
 
 ### Coverage
 
@@ -90,14 +106,14 @@ Figures for release `2026-10`, over every UPRN in the ONS UPRN Directory. Per-au
 |---|---|---|---|---|
 | Local authorities | 296 | 32 | 22 | **350** |
 | UPRNs | 35,630,027 | 3,882,711 | 2,080,389 | **41,593,127** |
-| Has a point (OS Open UPRN) | 99.99% | 99.99% | 99.98% | **99.99%** |
-| Has a TOID (OS Open Linked Identifiers) | 99.89% | 99.91% | 99.86% | **99.89%** |
+| Has a point (OS Open UPRN) | 99.98% | 99.99% | 99.96% | **99.98%** |
+| Has a TOID (OS Open Linked Identifiers) | 99.87% | 99.89% | 99.88% | **99.87%** |
 | Has a best outline of any kind | 97.5% | 93.6% | 96.2% | **97.0%** |
 | Matched to an OS OpenMap Local building | 86.0% | 82.8% | 84.6% | **85.6%** |
 | In a land parcel | 94.8% | 65.6% | 92.1% | **91.9%** |
-| Has a street name | 92.3% | 85.4% | 81.2% | **91.1%** |
+| Has a street name | 92.3% | 85.4% | 81.3% | **91.1%** |
 | Has an EPC property type | 55.7% | 49.8% | 51.8% | **54.9%** |
-| Has a matched business name (Overture) | 3.9% | 3.0% | 3.8% | **3.9%** |
+| Has a matched business name (Overture) | 3.9% | 3.0% | 3.8% | **3.8%** |
 | Has a linked Price Paid sale | 0.2% | n/a | 0.2% | **0.2%** |
 | Mean `quality_score` (0 to 100) | 84.7 | 79.2 | 84.5 | **84.2** |
 
@@ -110,11 +126,11 @@ that 32% of ownership polygons are missing. Price Paid Data covers England and W
 
 | Source | England | Scotland | Wales | **Great Britain** |
 |---|---|---|---|---|
-| HM Land Registry INSPIRE parcel | 52.6% | n/a | 52.3% | **19,812,087 (47.6%)** |
-| Registers of Scotland parcel | n/a | 33.3% | n/a | **1,293,471 (3.1%)** |
-| OS OpenMap Local building | 33.4% | 50.1% | 35.0% | **14,581,625 (35.1%)** |
-| Microsoft footprint | 11.5% | 10.1% | 9.0% | **4,674,298 (11.2%)** |
-| None | 2.5% | 6.4% | 3.8% | **1,231,646 (3.0%)** |
+| HM Land Registry INSPIRE parcel | 52.5% | n/a | 52.3% | **19,810,608 (47.6%)** |
+| Registers of Scotland parcel | n/a | 33.3% | n/a | **1,293,403 (3.1%)** |
+| OS OpenMap Local building | 33.4% | 50.1% | 35.0% | **14,582,801 (35.1%)** |
+| Microsoft footprint | 11.5% | 10.1% | 9.0% | **4,672,139 (11.2%)** |
+| None | 2.5% | 6.4% | 3.8% | **1,234,176 (3.0%)** |
 
 Parcels often separate neighbouring properties better than OpenMap Local, which merges terraces into one shape.
 
@@ -127,18 +143,18 @@ five, `block` more than five.
 |---|---|---|---|---|
 | England | 48.4% | 20.2% | 28.9% | 2.5% |
 | Scotland | 35.4% | 22.8% | 35.3% | 6.4% |
-| Wales | 56.1% | 21.1% | 19.1% | 3.8% |
+| Wales | 56.1% | 21.1% | 19.0% | 3.8% |
 | **Great Britain** | **47.5%** | **20.5%** | **29.0%** | **3.0%** |
 
 By source, in UPRNs:
 
 | Source | `property` | `small_group` | `block` |
 |---|---|---|---|
-| HM Land Registry INSPIRE parcel | 12,375,707 | 3,421,706 | 4,014,674 |
-| Registers of Scotland parcel | 690,742 | 207,427 | 395,302 |
-| OS OpenMap Local building | 4,579,094 | 3,884,723 | 6,117,808 |
-| Microsoft footprint | 2,129,303 | 1,009,096 | 1,535,899 |
-| **All sources** | **19,774,846** | **8,522,952** | **12,063,683** |
+| HM Land Registry INSPIRE parcel | 12,376,110 | 3,421,171 | 4,013,327 |
+| Registers of Scotland parcel | 690,734 | 207,430 | 395,239 |
+| OS OpenMap Local building | 4,580,345 | 3,885,175 | 6,117,281 |
+| Microsoft footprint | 2,128,955 | 1,008,743 | 1,534,441 |
+| **All sources** | **19,776,144** | **8,522,519** | **12,060,288** |
 
 Parcels supply two thirds of all `property`-level answers.
 
@@ -148,9 +164,9 @@ From the `uprn` table, which uses OpenMap Local only:
 
 | How the building was found | UPRNs |
 |---|---|
-| Building containing the TOID's point (OS Open TOID) | 35,457,696 (85.2%) |
-| Building containing the UPRN's own point (fallback) | 160,141 (0.4%) |
-| No building | 5,975,290 (14.4%) |
+| Building containing the TOID's point (OS Open TOID) | 35,443,787 (85.2%) |
+| Building containing the UPRN's own point (fallback) | 172,868 (0.4%) |
+| No building | 5,976,472 (14.4%) |
 
 | UPRNs sharing the outline (`uprns_in_building`) or parcel (`uprns_in_parcel`) | Building | Parcel |
 |---|---|---|
@@ -181,11 +197,11 @@ Most UPRNs without a street name sit on roads missing from the open road network
 | Flat | 14.4% |
 | Bungalow | 4.7% |
 | Maisonette | 1.2% |
-| Non-domestic and other | 2.2% |
+| Non-domestic and other | 2.3% |
 | No EPC | 45.1% |
 
 Built form, for the 21.6 million UPRNs that have one: semi-detached 31.7%, mid-terrace 26.4%, detached 23.5%,
-end-terrace 14.0%, enclosed terrace 2.4%, not recorded 2.1%.
+end-terrace 14.0%, enclosed terrace 2.3%, not recorded 2.1%.
 
 ### Quality
 
@@ -201,55 +217,34 @@ end-terrace 14.0%, enclosed terrace 2.4%, not recorded 2.1%.
 
 | Flag in `quality` | UPRNs |
 |---|---|
-| ok | 15,390,887 (37.0%) |
-| block outline | 12,063,683 (29.0%) |
-| small-group outline | 8,522,952 (20.5%) |
-| street far from USRN | 4,903,971 (11.8%) |
-| outline from Microsoft footprints | 4,674,298 (11.2%) |
+| ok | 15,391,734 (37.0%) |
+| block outline | 12,060,288 (29.0%) |
+| small-group outline | 8,522,519 (20.5%) |
+| street far from USRN | 4,903,724 (11.8%) |
+| outline from Microsoft footprints | 4,672,139 (11.2%) |
 | no street name | 3,681,778 (8.9%) |
-| postcode far from unit centroid | 1,875,977 (4.5%) |
-| no outline | 1,231,646 (3.0%) |
-| postcode not in Code-Point | 547,076 (1.3%) |
-| USRN has no geometry | 147,881 (0.4%) |
+| postcode far from unit centroid | 1,876,426 (4.5%) |
+| no outline | 1,234,176 (3.0%) |
+| postcode not in Code-Point | 549,656 (1.3%) |
+| USRN has no geometry | 150,524 (0.4%) |
 | no USRN | 140,132 (0.3%) |
 | street name from Open Roads fallback | 27,483 (0.1%) |
-| building match methods disagree | 982 (0.0%) |
+| building match methods disagree | 960 (0.0%) |
 
 A UPRN can carry several flags. The postcode flags come from checks against Code-Point Open; no postcodes are
 published.
-
-### Optional layers
-
-| Layer | Coverage |
-|---|---|
-| Microsoft footprint matched (`outline_ms`) | 34,925,170 UPRNs (84.0%) |
-| OpenStreetMap building matched (`outline_odbl`) | 27,559,961 UPRNs (66.3%) |
-| OpenStreetMap street name (`streets_odbl`) | 37,459,014 UPRNs (90.1%) |
-| OpenStreetMap house number / house name (`streets_odbl`) | 6,310,431 (15.2%) / 1,245,730 (3.0%) |
-| Overture places (`poi`) | 4,161,267 places, naming 3.9% of UPRNs |
-| Price Paid sales (`ppd_open`) | 84,141 sales for 82,993 UPRNs, median price £285,000 |
-
-The most common Overture categories on matched UPRNs are home services, personal and beauty services, hardware and
-garden stores, professional services and restaurants.
 
 ### Release size
 
 | Table | Rows | Size |
 |---|---|---|
-| `uprn` | 41,593,127 | 1.8 GB |
 | `resolved_open` | 41,593,127 | 1.9 GB |
-| `buildings` | 11,069,743 | 0.8 GB |
-| `epc` | 22,852,322 | 1.3 GB |
-| `provenance` | 41,593,127 | 0.3 GB |
-| `poi` | 4,161,267 | 0.2 GB |
-| `ppd_open` / `ppd_open_summary` | 84,141 / 82,993 | under 0.01 GB |
-| `outline_ms` / `outline_ms_buildings` | 41,593,127 / 12,668,838 | 0.9 / 1.8 GB |
-| `outline_odbl` / `outline_odbl_buildings` | 41,593,127 / 13,838,437 | 0.8 / 1.7 GB |
-| `streets_odbl` | 41,593,127 | 0.2 GB |
-| `tiles/` (PMTiles) | | 7.2 GB |
-| **Whole release** | 8,366 files | **18.9 GB** |
-
-The `parcels` table is added from release `2026-11`.
+| `uprn` | 41,593,127 | 1.8 GB |
+| `buildings` | 11,070,598 | 0.8 GB |
+| `parcels` | 21,118,570 | 3.5 GB |
+| `outline_ms_buildings` | 2,914,012 | 0.4 GB |
+| `tiles/` (3 PMTiles archives) | | 7.2 GB |
+| **Whole release** | 3,518 files | **15.7 GB** |
 
 ### Checked against OpenStreetMap
 
@@ -259,9 +254,9 @@ claim. For the 2.8 million tagged buildings that hold a single UPRN, mostly hous
 
 | `outline_confidence` | Tagged UPRNs | Mapped building lies inside our outline | Our outline holds no other mapped property |
 |---|---|---|---|
-| `property` | 2,468,852 | 98.5% | **98.4%** |
-| `small_group` | 256,046 | 97.6% | 9.9% |
-| `block` | 81,549 | 98.1% | 4.6% |
+| `property` | 2,468,840 | 98.5% | **98.4%** |
+| `small_group` | 256,056 | 97.6% | 9.9% |
+| `block` | 81,550 | 98.1% | 4.6% |
 
 So a `property` outline almost always belongs to that property alone, while `small_group` and `block` outlines
 almost always take in neighbours, as their labels say. Where a `property` outline is an OS OpenMap Local or
@@ -280,21 +275,20 @@ derived from OpenStreetMap: © OpenStreetMap contributors, ODbL-1.0).
   "outline" is a block: in Islington the median outline is 376 m² and 80% of UPRNs share one with more than 20
   others. Check `outline_confidence`, `uprns_in_building`, `uprns_in_parcel` and `outline_granularity` before
   treating an outline as one property.
-- **No addresses.** House numbers, building names and postcodes are not in the open tables (Royal Mail and OS
-  third-party rights). OpenStreetMap house numbers are in `streets_odbl/` only, where OSM has them.
+- **No addresses.** House numbers, building names and postcodes are not published (Royal Mail and OS third-party
+  rights).
 - **Not every UPRN is a dwelling.** OS Open UPRN carries no classification.
 - **A parcel is not a building.** It shows the indicative ground-level extent of a registered freehold title; the
   legal extent can only be established from the title plan.
 - **Scottish parcels are partial.** Registers of Scotland publish Land Register parcels only.
-- **Price Paid covers recent sales only.** It includes only sales in HMLR's UPRN lookup, so it is not the
-  complete Price Paid dataset.
+- **Price Paid links are recent sales only.** `uprn.ppd_transaction_ids` holds only sales in HMLR's UPRN lookup,
+  published since August 2026, so most UPRNs have none.
 - **`building_id` is not stable between releases.** It is a hash of the outline geometry.
 - **ONSUD sets the UPRN list and local authority**, and can disagree with OS Open UPRN on location.
 
 ## Northern Ireland
 
-Northern Ireland has no open UPRNs, so it is not in the Parquet tables. `tiles/ni_addresses.pmtiles` carries
-92,358 OpenStreetMap address points for Northern Ireland (ODbL-1.0) for mapping. They cannot be joined to UPRNs.
+Northern Ireland has no open UPRNs, so it is not covered.
 
 ## Source data
 
@@ -315,22 +309,23 @@ PAF. All sources are free to access; England and Wales EPC data needs only a fre
 | [Code-Point Open](https://www.ordnancesurvey.co.uk/products/code-point-open) | Ordnance Survey | OGL v3.0 | Postcode quality checks only; no postcodes published |
 | [ONS UPRN Directory (ONSUD)](https://geoportal.statistics.gov.uk/) | Office for National Statistics | OGL v3.0 | UPRN list, local authority, OA / LSOA / MSOA |
 | [INSPIRE Index Polygons](https://use-land-property-data.service.gov.uk/datasets/inspire) | HM Land Registry | OGL v3.0 | Land parcels, England and Wales |
-| [Price Paid Data and UPRN lookup](https://www.gov.uk/government/collections/price-paid-data) | HM Land Registry | OGL v3.0 | Sale prices and dates for linked UPRNs; no address fields |
+| [Price Paid Data and UPRN lookup](https://www.gov.uk/government/collections/price-paid-data) | HM Land Registry | OGL v3.0 | Price Paid transaction IDs for linked UPRNs |
 | [INSPIRE Cadastral Parcels](https://ros-inspire.themapcloud.com/) | Registers of Scotland | OGL v3.0 | Land parcels, Scotland |
-| [EPC register, England and Wales](https://get-energy-performance-data.communities.gov.uk/) | MHCLG | OGL v3.0 (non-address fields) | Property type, built form and other certificate fields |
+| [EPC register, England and Wales](https://get-energy-performance-data.communities.gov.uk/) | MHCLG | OGL v3.0 (non-address fields) | Property type, built form and certificate ID |
 | [EPC register, Scotland](https://statistics.gov.scot/data/domestic-energy-performance-certificates) | Scottish Government | OGL v3.0 (non-address fields) | As above, Scotland |
-| [GlobalMLBuildingFootprints](https://github.com/microsoft/GlobalMLBuildingFootprints) | Microsoft | CDLA-Permissive-2.0 | Alternative building footprints |
+| [GlobalMLBuildingFootprints](https://github.com/microsoft/GlobalMLBuildingFootprints) | Microsoft | CDLA-Permissive-2.0 | Building footprints where no OS building or parcel fits |
 | [Overture Maps Places](https://docs.overturemaps.org/guides/places/) | Overture Maps Foundation | CDLA-Permissive-2.0, Apache-2.0 or CC0-1.0, per provider | Business and organisation names |
-| [OpenStreetMap](https://www.openstreetmap.org/) (Geofabrik extracts) | OpenStreetMap contributors | ODbL-1.0 | Street names, house numbers and building outlines in the ODbL folders; Northern Ireland address points |
+| [OpenStreetMap](https://www.openstreetmap.org/) (Geofabrik extracts) | OpenStreetMap contributors | ODbL-1.0 | The independent accuracy check only (aggregate statistics in `accuracy.json`); no OpenStreetMap data is in the tables |
 
 Exact source versions for this release are recorded in `release_manifest.json`. EPC address fields and Price Paid
 address text are excluded, because they contain third-party address data that the open licences do not cover.
 
 ## Licences and attribution
 
-Licences differ by folder and must not be mixed. Most importantly, the ODbL folders are share-alike: anything
-you derive from them and redistribute must stay under ODbL. Full terms and every required statement are in
-`<release>/LICENCE.md`, and each non-OGL folder carries its own `LICENCE.txt`. HM Land Registry INSPIRE data is
+Everything is under the OGL v3.0 except two labelled parts: `outline_ms_buildings/` (CDLA-Permissive-2.0,
+attribution only) and the business name columns of `resolved_open/` (Overture Maps, per provider; see
+`resolved_open/LICENCE.txt`). There is no share-alike data in the release. Full terms and every required statement
+are in `<release>/LICENCE.md`. HM Land Registry INSPIRE data is
 reused under its [conditions of use](https://use-land-property-data.service.gov.uk/datasets/inspire/#conditions).
 
 For the OGL v3.0 tables, carry these statements with any reuse:
@@ -345,7 +340,8 @@ For the OGL v3.0 tables, carry these statements with any reuse:
 - © Crown copyright. Reproduced with the permission of Registers of Scotland.
 - Contains EPC register data (non-address fields) from MHCLG and the Scottish Government under the Open Government Licence v3.0.
 
-For OpenStreetMap-derived folders: "© OpenStreetMap contributors, ODbL-1.0". This README and the STAC metadata are
+For `outline_ms_buildings/`: "Building footprints © Microsoft, CDLA-Permissive-2.0". `accuracy.json` holds
+aggregate statistics derived from OpenStreetMap: "© OpenStreetMap contributors, ODbL-1.0". This README and the STAC metadata are
 available under CC0-1.0.
 
 ## Contact

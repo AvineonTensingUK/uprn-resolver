@@ -112,7 +112,7 @@ Filter on the covering struct, not on the geometry, so row groups are skipped fr
 ```sql
 INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;
 SELECT uprn, street_name, ST_AsText(geometry)
-FROM read_parquet('https://data.source.coop/<account>/uk-uprn-open/<release>/uprn/lad=*/uprn.parquet',
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn/lad=*/uprn.parquet',
                   hive_partitioning = true)
 WHERE lad = 'E09000019'
   AND bbox.xmin <= 531000 AND bbox.xmax >= 530000
@@ -120,7 +120,7 @@ WHERE lad = 'E09000019'
 ```
 
 (`lad=*` globbing needs S3 listing: with HTTP list files explicitly, or use `lad_index.parquet` to choose them.
-S3 form: `s3://us-west-2.opendata.source.coop/<account>/uk-uprn-open/<release>/...`.)
+S3 form: `s3://<region>.opendata.source.coop/avineon-tensing/uprn-resolver/<release>/...`.)
 
 GeoPandas (`bbox` is a (xmin, ymin, xmax, ymax) tuple in the file CRS and uses the covering column):
 

@@ -11,7 +11,7 @@ Research notes (checked 2026-10) and runbook. Source is in beta; details may cha
   account (roles: Owner, Administrator, Member). Product roles: Owner, Contributor, Viewer. [Core concepts](https://docs.source.coop/core-concepts)
 - **Products (repositories).** Created in the web UI (top-right menu once approved). Fields: title (<=200 chars), owner
   account, product ID (3-39 chars, letters/digits/hyphens, no leading/trailing/consecutive hyphens; appears in the URL),
-  description (<=500 chars), up to 20 tags, data connection (Source-managed storage by default; us-west-2 recommended).
+  description (<=500 chars), up to 20 tags, data connection (Source-managed storage by default; Source recommends us-west-2, but eu-west-2 London or eu-west-1 Ireland suit UK users).
   New products are Unlisted; set to Listed via the gear icon to appear in search. [Create a data product](https://docs.source.coop/create-a-data-product)
 - **README.** The root `README.md` is rendered as the product landing page; include contact info and, per the core-concepts
   page, licence information (separately for metadata and data). Example: [ordnancesurvey/ngd-boundaries](https://source.coop/ordnancesurvey/ngd-boundaries)
@@ -65,16 +65,16 @@ are never read. `resolved_open`, `outline_odbl` (ODbL) and `outline_ms` (CDLA-Pe
 Manual steps (cannot be automated):
 1. Sign in at source.coop, choose a username; submit the beta tester application; wait for approval.
 2. (Optional) email hello@source.coop for an organisation account and for upload rights if "View Credentials" is missing.
-3. Create the product in the UI (ID e.g. `uk-uprn-open`, tags `opendata, uprn, geoparquet, ogl`); leave Unlisted.
+3. Create the product in the UI (ID `uprn-resolver`, account `avineon-tensing`, tags `opendata, uprn, geoparquet, ogl`); leave Unlisted.
 4. On the product page copy the temporary credentials (Environment Variables) into your shell. Install the AWS CLI (`brew install awscli`).
 5. Run a dry run, inspect, then the real upload:
    ```
-   uv run uprn-resolver publish --release 2026-10 --dest s3://<account>/uk-uprn-open/            # dry run (default)
-   uv run uprn-resolver publish --release 2026-10 --dest s3://<account>/uk-uprn-open/ --execute  # upload
+   uv run uprn-resolver publish --release 2026-11 --dest s3://avineon-tensing/uprn-resolver/            # dry run (default)
+   uv run uprn-resolver publish --release 2026-11 --dest s3://avineon-tensing/uprn-resolver/ --execute  # upload
    ```
    The release is staged in `data/release/<release>/` (`--stage-dir` to change); upload is `aws s3 sync` to the data proxy.
    Run `uv run uprn-resolver validate` first and check the report has no FAIL.
-6. Verify: `aws s3 ls s3://<account>/uk-uprn-open/2026-10/ --endpoint-url https://data.source.coop --no-sign-request`, and a DuckDB query.
+6. Verify: `aws s3 ls s3://avineon-tensing/uprn-resolver/2026-11/ --endpoint-url https://data.source.coop --no-sign-request`, and a DuckDB query.
 7. Copy the release README/LICENCE to the product root so the landing page renders, update the README example paths, then set the product to Listed.
 8. Repeat per release with a new `<release>` folder. Credentials expire; refresh as needed.
 

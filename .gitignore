@@ -13,3 +13,4 @@ __pycache__/
 
 # local map project (holds absolute local paths)
 uprn-resolver.rgis
+.env

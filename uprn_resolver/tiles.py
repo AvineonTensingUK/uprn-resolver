@@ -51,6 +51,9 @@ OGL_ATTR = (
     "Contains OS data © Crown copyright and database right 2026. OGL v3.0. "
     "Microsoft-derived fields CDLA-Permissive-2.0; Overture POI not included."
 )
+# Tile sets in the lean release (release-extras --tiles); `tiles --kind all` still builds every kind.
+RELEASE_KINDS = ("points", "ogl", "parcels")
+
 KINDS: dict[str, Kind] = {
     "points": Kind(
         "uprn_points.pmtiles",

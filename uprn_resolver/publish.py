@@ -61,6 +61,10 @@ PLAIN_TABLES = (
     "epc", "provenance", "poi", "outline_ms", "outline_odbl", "ppd_open", "ppd_open_summary"
 )  # fmt: skip  # plain Parquet keyed by uprn
 ODBL_TABLE = "streets_odbl"
+# The lean release (the default for `publish`): the answer per UPRN plus the shapes its best outline points to.
+# Without the outline_ms match table, outline_ms_buildings is cut to the footprints used as a best outline. Every
+# other table stays buildable locally and can be shipped with `publish --full`.
+LEAN_TABLES = ("uprn", "buildings", "resolved_open", "parcels", "outline_ms_buildings")
 # Licence classes. OGL tables are the core; every other table lives in its own folder with a LICENCE.txt.
 ODBL_TABLES = (ODBL_TABLE, "outline_odbl", "outline_odbl_buildings")
 MS_TABLES = ("outline_ms", "outline_ms_buildings")
@@ -401,6 +405,25 @@ def _lad_dirs(out_dir: Path, lads: list[str] | None = None) -> list[Path]:
     return found
 
 
+def _used_ms_footprints(con, src: Path, tmp_dir: Path) -> Path:
+    """Copy of one LAD's outline_ms_buildings keeping only footprints that are a resolved_open best outline (the
+    LAD's resolved_open.parquet sits next to it). Written outside the release folder; returns its path."""
+    ro = src.parent / "resolved_open.parquet"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    out = tmp_dir / f"{src.parent.name}_{src.name}"
+    keep = (
+        f"SELECT best_outline_id FROM read_parquet('{_q(ro)}', hive_partitioning=false) "
+        "WHERE best_outline_source = 'ms_building'"
+        if ro.exists()
+        else "SELECT NULL::VARCHAR WHERE false"
+    )
+    con.execute(
+        f"""COPY (SELECT * FROM read_parquet('{_q(src)}', hive_partitioning=false) WHERE ms_building_id IN ({keep}))
+            TO '{_q(out)}' (FORMAT parquet)"""
+    )
+    return out
+
+
 def _write_geo(con, src: Path, dst: Path, row_group_size: int, key: str = "uprn") -> dict:
     """Rewrite one geo file: bbox covering column, Hilbert order, 1.1.0 metadata. Returns file bbox/types."""
     from uprn_resolver.build import EPSG_27700_PROJJSON
@@ -569,8 +592,13 @@ def _assemble(
     national_files: bool = False,
     changelog_against: Path | None = None,
     source_manifest: Path | None = None,
+    lean: bool = False,
 ) -> list[Path]:
     """Write <stage_dir>/<release>/ from <out_dir>/lad=<code>/*.parquet and validate every file.
+
+    ``lean`` ships only ``LEAN_TABLES`` (the default for the ``publish`` command); otherwise every table present
+    ships. When ``outline_ms_buildings`` ships without ``outline_ms``, only the footprints that are some UPRN's
+    ``resolved_open`` best outline are written.
 
     Layout (hive partitioned by lad, one file per LAD per table). GeoParquet 1.1 (Hilbert, bbox covering):
     uprn/, buildings/, resolved_open/ (OGL; poi_* columns Overture, outline ids Microsoft), outline_ms_buildings/
@@ -599,6 +627,9 @@ def _assemble(
     jobs: list[tuple[str, Path, Path]] = []  # (kind, src, dst)
     optional = (*OPTIONAL_GEO, *PLAIN_TABLES, ODBL_TABLE)
     assert not set(NEVER_SHIP) & {*GEO_TABLES, *optional}
+    if lean:
+        optional = tuple(k for k in optional if k in LEAN_TABLES)
+    used_ms_only = "outline_ms_buildings" in optional and "outline_ms" not in optional
     for d in lad_dirs:
         code = d.name.removeprefix("lad=")
         for kind in GEO_TABLES:
@@ -643,6 +674,8 @@ def _assemble(
         if problems:
             raise PublishError("validation failed:\n  " + "\n  ".join(problems))
         for kind, src, dst in jobs:
+            if kind == "outline_ms_buildings" and used_ms_only:
+                src = _used_ms_footprints(con, src, Path(stage_dir).resolve() / ".ms_used")
             if kind in GEO_TABLES or kind in OPTIONAL_GEO:
                 info = _write_geo(con, src, dst, row_group_size, OPTIONAL_GEO.get(kind, "uprn"))
                 if kind == "uprn":
@@ -668,6 +701,7 @@ def _assemble(
             out_problems += validate_parquet(dst, _table_allow(kind, allow), require_geo=False, ogl=kind in OGL_TABLES)
     finally:
         con.close()
+        shutil.rmtree(Path(stage_dir).resolve() / ".ms_used", ignore_errors=True)
     if out_problems:
         raise PublishError("release validation failed:\n  " + "\n  ".join(out_problems))
     for row in index:
@@ -1018,7 +1052,8 @@ def publish(
     stage_dir = Path(stage_dir) if stage_dir else out_dir.parent / "release"
     files = assemble(out_dir, release, stage_dir, allow, **assemble_kwargs)
     target = dest.rstrip("/") + f"/{release}/"
-    cmd = ["aws", "s3", "sync", str(stage_dir / release), target, "--endpoint-url", ENDPOINT]
+    # --delete: the remote release folder ends up identical to the local one (no leftovers from an earlier upload)
+    cmd = ["aws", "s3", "sync", str(stage_dir / release), target, "--delete", "--endpoint-url", ENDPOINT]
     latest = [
         "aws",
         "s3",

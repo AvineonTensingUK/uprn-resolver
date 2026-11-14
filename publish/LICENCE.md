@@ -1,19 +1,19 @@
 # Licence
 
-This release combines datasets under **different licences**. Each top-level folder has one licence class; do not
-treat the release as a single OGL dataset. Folders with a non-OGL licence carry a `LICENCE.txt`.
+Almost everything in this release is under the Open Government Licence v3.0. Two labelled parts have their own
+open licences: Microsoft building footprints (`outline_ms_buildings/`, CDLA-Permissive-2.0) and the business name
+columns of `resolved_open/` (Overture Maps, per provider). No share-alike data is included.
 
 | Folder | Licence | Notes |
 |---|---|---|
-| `uprn/`, `buildings/`, `epc/`, `provenance/` | OGL v3.0 | OGL core (OS, ONS, HMLR, RoS, EPC non-address fields) |
+| `uprn/`, `buildings/` | OGL v3.0 | OGL core (OS, ONS, HMLR, RoS, EPC non-address fields) |
 | `parcels/` | OGL v3.0 | Land parcel polygons: HM Land Registry INSPIRE Index Polygons (England and Wales) and Registers of Scotland cadastral parcels. Needs the HM Land Registry, Ordnance Survey (AC0000851063) and Registers of Scotland statements below. `LICENCE.txt` |
 | `resolved_open/` | OGL v3.0 core + third-party columns | `poi_*` columns are Overture Places (per-provider licence in `poi_licence`); any Microsoft-derived outline ids/areas are CDLA-Permissive-2.0. Contains no OSM/ODbL data. `LICENCE.txt` |
-| `poi/` | Overture Places, per provider: CDLA-Permissive-2.0, Apache-2.0, CC0-1.0 | `LICENCE.txt` |
-| `outline_ms/`, `outline_ms_buildings/` | CDLA-Permissive-2.0 | Microsoft building footprints; `LICENCE.txt` in each |
-| `streets_odbl/`, `outline_odbl/`, `outline_odbl_buildings/` | ODbL-1.0 | OpenStreetMap derived; `LICENCE.txt` in each |
+| `outline_ms_buildings/` | CDLA-Permissive-2.0 | Microsoft building footprints used as a best outline; `LICENCE.txt` |
+| `tiles/` | OGL v3.0 | Rendered from `resolved_open/`, `buildings/` and `parcels/`; same statements |
+| `accuracy.json` | ODbL-1.0 (Produced Work) | Aggregate statistics derived from OpenStreetMap; see section 2 |
 
 `address_local` and `resolved_local` (EPC address text, postcodes) are never part of a release.
-The ODbL tables are separate folders and are not joined into any OGL table; keep them separate (see ODbL below).
 
 ## 1. OGL v3.0 core
 
@@ -102,30 +102,20 @@ statement); they are not address text from EPC, OSM or Royal Mail.
 - **ONSUD user guide.** The per-release user guide PDF (licence section and postcode attribution table)
   was not read; only the ONS licences page and FOI response were. **Unverified.**
 
-## 2. ODbL-1.0 (OpenStreetMap derived)
+## 2. OpenStreetMap (`accuracy.json` only)
 
-Folders: `streets_odbl/`, `outline_odbl/`, `outline_odbl_buildings/`.
+No OpenStreetMap data is in the tables or tiles. `accuracy.json` holds aggregate statistics from comparing
+`resolved_open` with OpenStreetMap buildings tagged with a UPRN; as a Produced Work under the
+[ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (section 4.3) it carries the notice "Contains
+information from OpenStreetMap, © OpenStreetMap contributors, ODbL 1.0"
+(<https://www.openstreetmap.org/copyright>).
 
-Contains information from OpenStreetMap, © OpenStreetMap contributors, made available under the
-[Open Database Licence (ODbL 1.0)](https://opendatacommons.org/licenses/odbl/1-0/).
-Attribution: "© OpenStreetMap contributors" (<https://www.openstreetmap.org/copyright>).
-
-- These tables are a **Derivative Database** of OpenStreetMap under the ODbL. Share-alike: if you publicly use
-  them, or a database built from them, you must offer it under the ODbL, keep the attribution, and keep it open.
-- They are published as separate folders and are **not joined into** the OGL tables. If you join them to the
-  OGL tables yourself and publicly use the result, the combined database is a Derivative Database and must be
-  offered under the ODbL. A **Produced Work** (for example a rendered map or an image) made from them does not
-  need to be ODbL but must carry the notice "Contains information from OpenStreetMap, © OpenStreetMap
-  contributors, ODbL 1.0" (ODbL section 4.3). Legal status of a given use is your responsibility; this is not
-  legal advice. **Unverified** by a lawyer.
-- Street names, house numbers and house names are crowd-sourced hints, not authoritative addresses.
-
-## 3. Overture Maps Places (`poi/`, and `poi_*` columns in `resolved_open/`)
+## 3. Overture Maps Places (`poi_*` columns in `resolved_open/`)
 
 Contains Places data from Overture Maps Foundation (<https://overturemaps.org>). Source:
 <https://docs.overturemaps.org/guides/places/>; per-provider licences and attribution:
 <https://docs.overturemaps.org/attribution/>. Licence depends on the provider of each record
-(`poi_licence`, and `poi/LICENCE.txt` for the release in use):
+(`poi_licence`, and `resolved_open/LICENCE.txt` for the release in use):
 
 - CDLA-Permissive-2.0: Meta, Microsoft, PinMeTo, Krick, RenderSEO, DAC, BrightQuery, Birdeye, Uberall,
   OpenTravel Alliance.
@@ -135,18 +125,18 @@ Contains Places data from Overture Maps Foundation (<https://overturemaps.org>).
 - CC0-1.0: AllThePlaces.
 
 The Places theme contains no OpenStreetMap data (per the Overture attribution page; **re-check each Overture release**).
-Match columns (`uprn`, `match_method`, `match_distance_m`, `match_confidence`, `candidates`) are derived by
-uprn-resolver and are heuristic. The provider list above is from the repository's `poi.LICENCE.txt`; the
+The match (`poi_match_confidence`) is derived by uprn-resolver and is heuristic. The provider list above is from the repository's `poi.LICENCE.txt`; the
 Apache-2.0 NOTICE text itself was not retrieved here (**unverified**).
 
-## 4. Microsoft building footprints (`outline_ms/`, `outline_ms_buildings/`, and ids/areas in `resolved_open/`)
+## 4. Microsoft building footprints (`outline_ms_buildings/`, and ids in `resolved_open/`)
 
 Contains Microsoft Building Footprints (GlobalMLBuildingFootprints), licensed under CDLA-Permissive-2.0
 (<https://cdla.dev/permissive-2-0/>). Source: <https://github.com/microsoft/GlobalMLBuildingFootprints>
 (the repository README states the data is licensed by Microsoft under the CDLA Permissive 2.0). CDLA-Permissive-2.0
 requires that the licence text (or a link) accompany redistribution of the data; it places no condition on the
-results of analysis. Polygons are reprojected to EPSG:27700; per-UPRN columns are derived by spatial join with
-OS Open UPRN / Open TOID, so those columns also contain OS data (OGL statement above applies).
+results of analysis. Polygons are reprojected to EPSG:27700. Only footprints that are some UPRN's best outline are included; the
+link to each UPRN is derived by spatial join with OS Open UPRN / Open TOID, so it also contains OS data (OGL
+statement above applies). Attribution: "Building footprints © Microsoft, CDLA-Permissive-2.0".
 The Microsoft data is taken from Microsoft's own files, not Overture's ODbL building copy.
 
 ## 5. INSPIRE index polygons
@@ -179,4 +169,4 @@ HM Land Registry Transaction ID to UPRN and Transaction ID to INSPIRE ID look-up
 
 ## 8. Disclaimer
 
-Provided as is, with no warranty. Building outlines are approximate. The OGL tables contain no address text; house numbers and names exist only in the ODbL `streets_odbl` table.
+Provided as is, with no warranty. Building outlines are approximate. The release contains no address text: no house numbers, building names or postcodes.

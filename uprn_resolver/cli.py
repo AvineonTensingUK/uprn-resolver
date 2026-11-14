@@ -171,6 +171,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="column names exempt from the address denylist (e.g. postcode)",
     )
     pb.add_argument("--force", action="store_true", help="delete and rebuild an existing release folder")
+    pb.add_argument(
+        "--full", action="store_true", help="ship every table (default: the lean release, publish.LEAN_TABLES)"
+    )
     _release_extra_args(pb)
 
     re_ = sub.add_parser(
@@ -195,7 +198,9 @@ def build_parser() -> argparse.ArgumentParser:
     tl = sub.add_parser("tiles", help="PMTiles vector tiles from a release's GeoParquet (needs tippecanoe)")
     tl.add_argument("--release", required=True, help="release folder name")
     tl.add_argument("--stage-dir", type=Path, default=None, help="default: <data-dir>/release")
-    tl.add_argument("--kind", default="all", help="tile kind (see uprn_resolver.tiles.KINDS) or all")
+    tl.add_argument(
+        "--kind", default="all", help="tile kind (uprn_resolver.tiles.KINDS), release (the lean release set) or all"
+    )
     tl.add_argument("--lad-prefix", default="", help="only LADs starting with this (E09 = London)")
     tl.add_argument("--out-dir", type=Path, default=None, help="default: <release>/tiles")
     tl.add_argument("--tmp-dir", type=Path, default=None, help="scratch dir (default <data-dir>/tmp/tiles)")
@@ -551,6 +556,7 @@ def _release_kwargs(args) -> dict:
     }
     if hasattr(args, "force"):
         kw["force"] = args.force
+    kw["lean"] = not getattr(args, "full", False)
     return kw
 
 
@@ -576,7 +582,8 @@ def _release_extras(args) -> int:
             print(f"STAC validation failed: {res.get('invalid') or res['missing_assets'][:5]}", file=sys.stderr)
             rc = 1
     if args.tiles:
-        _tiles(argparse.Namespace(**{**vars(args), "kind": "all", "lad_prefix": "", "out_dir": None, "tmp_dir": None}))
+        extra = {"kind": "release", "lad_prefix": "", "out_dir": None, "tmp_dir": None}
+        _tiles(argparse.Namespace(**{**vars(args), **extra}))
     acc = args.data_dir / "validation" / f"accuracy_{args.release}.json"
     if acc.exists():  # written by `accuracy`, which needs the assembled release
         shutil.copy2(acc, root / "accuracy.json")
@@ -608,9 +615,9 @@ def _stac_validate(args) -> int:
 
 def _tiles(args) -> int:
     t = _mod("tiles")
-    kinds = list(t.KINDS) if args.kind == "all" else [args.kind]
-    if args.kind != "all" and args.kind not in t.KINDS:
-        raise SystemExit(f"tiles: unknown --kind {args.kind!r}; choose from {', '.join(t.KINDS)} or all")
+    kinds = list(t.KINDS) if args.kind == "all" else list(t.RELEASE_KINDS) if args.kind == "release" else [args.kind]
+    if args.kind not in ("all", "release") and args.kind not in t.KINDS:
+        raise SystemExit(f"tiles: unknown --kind {args.kind!r}; choose from {', '.join(t.KINDS)}, release or all")
     tmp = args.tmp_dir or args.data_dir / "tmp" / "tiles"
     for k in kinds:
         res = t.build(_release_root(args), k, prefix=args.lad_prefix, out_dir=args.out_dir, tmp_dir=tmp)

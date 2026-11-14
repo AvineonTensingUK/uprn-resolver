@@ -2,9 +2,8 @@
 
 Open lookup from UPRN to point, TOID, approximate building outline, land parcel ID, street name,
 statistical geographies and HM Land Registry identifiers, for Great Britain (41,593,127 UPRNs in 350 local
-authorities). Only street name and locality are included in the OGL tables, never house number or name
-(Royal Mail / OS third-party rights); house numbers exist only in the separately licensed `streets_odbl`
-table. Parcels come from HMLR INSPIRE (England & Wales) and Registers of Scotland. Not Northern Ireland, which
+authorities). Only street name and locality are included, never house number or name (Royal Mail / OS
+third-party rights). Parcels come from HMLR INSPIRE (England & Wales) and Registers of Scotland. Not Northern Ireland, which
 has no open UPRNs. Built by [uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver) (the repository's
 `RESEARCH.md` explains why this approach).
 
@@ -13,25 +12,21 @@ has no open UPRNs. Built by [uprn-resolver](https://github.com/AvineonTensingUK/
 One file per table per local authority (LAD), hive-partitioned, so `lad=<code>` is a queryable column:
 
 ```
-README.md  LICENCE.md  stats.json  lad_index.parquet   (lad, n_uprn, xmin, ymin, xmax, ymax, bytes)
+README.md  LICENCE.md  stats.json  accuracy.json  lad_index.parquet   (lad, n_uprn, xmin, ymin, xmax, ymax, bytes)
 release_manifest.json                      every file with size, sha256, row count; source versions
 stac/                                      static STAC catalogue (catalog.json, collections, one item per LAD)
-tiles/                                     PMTiles vector tiles for web maps, one archive per licence
-resolved_open/lad=<code>/resolved_open.parquet + LICENCE.txt  GeoParquet 1.1, Point  OGL v3 + labelled Overture/Microsoft columns
-parcels/lad=<code>/parcels.parquet + LICENCE.txt  GeoParquet 1.1, Polygon  OGL v3 (HMLR INSPIRE, Registers of Scotland)
-uprn/lad=<code>/uprn.parquet               GeoParquet 1.1, Point    OGL v3
-buildings/lad=<code>/buildings.parquet     GeoParquet 1.1, Polygon  OGL v3
-epc/lad=<code>/epc.parquet                 plain Parquet            OGL v3
-provenance/lad=<code>/provenance.parquet   plain Parquet            OGL v3
-poi/lad=<code>/poi.parquet  + poi/LICENCE.txt                      Overture, per provider
-streets_odbl/lad=<code>/streets_odbl.parquet + LICENCE.txt         ODbL-1.0
-ppd_open/lad=<code>/ppd_open.parquet + LICENCE.txt                 plain Parquet, OGL v3 (HMLR)
-ppd_open_summary/lad=<code>/ppd_open_summary.parquet + LICENCE.txt plain Parquet, OGL v3 (HMLR)
-outline_ms/lad=<code>/outline_ms.parquet + LICENCE.txt            plain Parquet            CDLA-Permissive-2.0
-outline_ms_buildings/lad=<code>/outline_ms_buildings.parquet      GeoParquet 1.1, Polygon  CDLA-Permissive-2.0
-outline_odbl/lad=<code>/outline_odbl.parquet + LICENCE.txt        plain Parquet            ODbL-1.0
-outline_odbl_buildings/lad=<code>/outline_odbl_buildings.parquet  GeoParquet 1.1, Polygon  ODbL-1.0
+tiles/                                     PMTiles: uprn_points, outlines_ogl, parcels (all OGL v3)
+resolved_open/lad=<code>/resolved_open.parquet + LICENCE.txt     GeoParquet 1.1, Point    OGL v3 + labelled Overture columns
+uprn/lad=<code>/uprn.parquet                                     GeoParquet 1.1, Point    OGL v3
+buildings/lad=<code>/buildings.parquet                           GeoParquet 1.1, Polygon  OGL v3
+parcels/lad=<code>/parcels.parquet + LICENCE.txt                 GeoParquet 1.1, Polygon  OGL v3 (HMLR INSPIRE, RoS)
+outline_ms_buildings/lad=<code>/outline_ms_buildings.parquet + LICENCE.txt  GeoParquet 1.1, Polygon  CDLA-Permissive-2.0
 ```
+
+The release is deliberately lean: the answer per UPRN (`resolved_open`, with more detail in `uprn`) and the shapes
+its best outline points to (`buildings`, `parcels`, `outline_ms_buildings`). Full EPC certificates, Price Paid
+records, Overture places, the complete Microsoft footprint set and OpenStreetMap layers are free from their
+publishers, and the pipeline can rebuild them locally (`uprn-resolver publish --full` ships them all).
 
 At the product root (next to the release folders), `latest.json` names the newest release and gives the paths of
 its `release_manifest.json` and `stac/catalog.json`. A release folder is immutable once published; check the
@@ -41,12 +36,11 @@ Spatial files are sorted along a Hilbert curve and carry a per-row `bbox` coveri
 filter on `bbox.xmin/xmax/ymin/ymax` to skip row groups, and use `lad_index.parquet` to choose files by
 extent. Coordinates are British National Grid, EPSG:27700; geometry is WKB. Details: `docs/format.md` in the repository.
 
-Licences differ by table and must not be mixed: the OGL tables (`uprn`, `buildings`, `epc`, `provenance`) are
-OGL v3.0 (`ppd_open*` and `parcels` also OGL v3.0, the latter with its own attribution statements); `poi` follows each Overture provider's licence (CDLA-Permissive-2.0 for most, Apache-2.0 for
-Foursquare, CC0-1.0 for AllThePlaces); `streets_odbl` is OpenStreetMap data under ODbL-1.0 (share-alike,
-"© OpenStreetMap contributors") and is kept in its own folder, as are the OSM building outlines (`outline_odbl*`, ODbL-1.0).
-`outline_ms*` (Microsoft footprints) are CDLA-Permissive-2.0, and `resolved_open` is OGL v3.0 with labelled
-Overture and Microsoft columns (see `LICENCE.md`). `address_local`, `resolved_local` and `ppd_local` (full addresses, postcode) are never published.
+Everything is OGL v3.0 (`parcels` with its own HMLR, OS and RoS statements) except two labelled parts:
+`outline_ms_buildings` (Microsoft footprints, CDLA-Permissive-2.0) and the `poi_*` columns of `resolved_open`
+(Overture Maps, per provider: CDLA-Permissive-2.0 for most, Apache-2.0 for Foursquare, CC0-1.0 for AllThePlaces).
+No share-alike data is included. See `LICENCE.md`. `address_local`, `resolved_local` and `ppd_local` (full
+addresses, postcode) are never published.
 
 ## uprn.parquet
 
@@ -75,7 +69,7 @@ Overture and Microsoft columns (see `LICENCE.md`). `address_local`, `resolved_lo
 | oa, lsoa, msoa | VARCHAR | Statistical geography codes (ONSUD) |
 | ppd_transaction_ids | LIST(VARCHAR) | HMLR Price Paid transaction IDs (where available) |
 | inspire_ids | LIST(VARCHAR) | HMLR INSPIRE polygon IDs (where available) |
-| epc_built_form, epc_property_type | VARCHAR | EPC summary fields (see epc.parquet for coverage) |
+| epc_built_form, epc_property_type | VARCHAR | EPC summary fields (54.9% of UPRNs have an EPC) |
 | epc_count | BIGINT | Number of EPC certificates for the UPRN |
 
 Postcode is only present in builds made with `--include-postcode`.
@@ -113,12 +107,6 @@ JOIN read_parquet('<release>/parcels/lad=E09000019/parcels.parquet') p
   ON p.parcel_id = r.best_outline_id AND p.parcel_source = r.best_outline_source;
 ```
 
-## epc.parquet
-
-EPC certificates keyed by UPRN, one row per UPRN: Scotland (data.gov.scot) and England & Wales (GOV.UK bulk
-download, where loaded). All non-address columns are kept; address and free-text columns are dropped and
-lodgement dates outside 2007 to today are nulled. 54.9% of UPRNs nationally have an EPC.
-
 ## resolved_open.parquet
 
 Best answer per UPRN. EPC bridge columns, all non-address OGL fields:
@@ -133,23 +121,12 @@ Best answer per UPRN. EPC bridge columns, all non-address OGL fields:
 
 EPC address data is not included; join on epc_lmk_key under the EPC data's own terms.
 
-## ppd_open.parquet and ppd_open_summary.parquet
+## outline_ms_buildings.parquet
 
-HM Land Registry Price Paid Data, England & Wales, keyed by UPRN. They contain only sales that HMLR itself links
-to a UPRN in its published transaction-to-UPRN lookup (`match_method = 'hmlr_lookup'`). The lookup has been
-published monthly since August 2026 and is not back-dated; in release 2026-10 it links 84,141 sales, mostly
-completed in 2025 and 2026, with a few older ones. There are no address fields (no PAON, SAON, street, locality, town or postcode), and no
-sales linked by comparing address text. Sales before the lookup began, or without a lookup entry, are absent, so
-this is not the complete Price Paid dataset.
-
-`ppd_open`: one row per sale: `uprn`, `transaction_id`, `price`, `date`, `property_type`, `old_new`, `duration`,
-`ppd_category_type`. `ppd_open_summary`: one row per UPRN: `sales_count`, `last_price`, `last_sale_date`,
-`first_sale_date`.
-
-Attribution (also in each folder's `LICENCE.txt`): "Contains HM Land Registry data © Crown copyright and database
-right 2021. This data is licensed under the Open Government Licence v3.0." The UPRNs contain OS data © Crown
-copyright and database right; see `LICENCE.md`. The address-bearing local tables (`ppd_local`, `ppd_local_summary`)
-are never published.
+Microsoft GlobalMLBuildingFootprints polygons that are some UPRN's best outline (`best_outline_source =
+'ms_building'`, 11% of UPRNs), used where neither an OS OpenMap Local building nor a land parcel gives a
+specific answer: `ms_building_id` (join to `resolved_open.best_outline_id`), `area_m2`,
+`geometry`. Attribution: "Building footprints © Microsoft, CDLA-Permissive-2.0"; see the folder's `LICENCE.txt`.
 
 ## stac/, release_manifest.json, latest.json, tiles/
 
@@ -166,29 +143,11 @@ are never published.
   Parquet), per-table totals, and the versions of the source datasets used. It does not list itself.
 - `latest.json` (product root): `{"latest": "<release>", "path", "manifest", "stac", "updated"}`; read it to find
   the newest release.
-- `tiles/`: PMTiles vector tiles for web maps, one archive per licence: `uprn_points` (OGL, zoom 5-16),
-  `outlines_ogl` (OGL), `parcels` (OGL, HMLR/RoS statements), `outlines_ms` (CDLA-Permissive-2.0) and `outlines_odbl` (ODbL-1.0), all zoom 13-16, plus
-  `ni_addresses` (Northern Ireland OSM address points, ODbL-1.0, no UPRNs). The Parquet files remain the source of
-  truth.
+- `tiles/`: PMTiles vector tiles for web maps: `uprn_points` (zoom 5-16), `outlines_ogl` (OS OpenMap Local
+  buildings) and `parcels` (HMLR/RoS statements), both zoom 13-16, all OGL v3.0. The Parquet files remain the
+  source of truth.
 - `CHANGELOG.json` / `CHANGELOG.md` and `national/<table>/part-NNNN.parquet` appear when a release is built with
   `--changelog-against` / `--national-files`.
-
-## provenance.parquet
-
-Per-UPRN QA from Open USRN, Code-Point Open and Open Roads: `usrn_street_type`, `usrn_distance_m`,
-`usrn_link_flag`, fallback street name (`street_name_fallback*`), `postcode_flag`, `codepoint_positional_quality`.
-Postcode text columns are removed from the release.
-
-## poi.parquet
-
-Overture Maps Places matched to UPRNs (same building, then same parcel, then nearest within 30 m): `name`,
-`category`, `brand`, `overture_confidence`, `uprn` (nullable), `match_method`, `match_distance_m`,
-`match_confidence`. Attribution and per-provider licences are in `poi/LICENCE.txt`.
-
-## streets_odbl.parquet
-
-One row per UPRN with OpenStreetMap-derived `osm_street_name`, `osm_housenumber`, `osm_housename` and match
-details. ODbL-1.0: a derived database that must stay under ODbL if redistributed; see `streets_odbl/LICENCE.txt`.
 
 ## Caveats
 
@@ -211,8 +170,8 @@ details. ODbL-1.0: a derived database that must stay under ODbL if redistributed
 ```sql
 INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;
 SELECT u.uprn, u.lsoa, u.match_method, ST_AsText(ST_GeomFromWKB(b.geometry))
-FROM read_parquet('https://data.source.coop/<account>/uk-uprn-open/<release>/uprn/lad=E09000019/uprn.parquet') u
-JOIN read_parquet('https://data.source.coop/<account>/uk-uprn-open/<release>/buildings/lad=E09000019/buildings.parquet') b
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn/lad=E09000019/uprn.parquet') u
+JOIN read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/buildings/lad=E09000019/buildings.parquet') b
   USING (building_id)
 WHERE u.uprn = 5300000000;
 ```
@@ -229,17 +188,17 @@ This is a one-off release. Further releases may follow; if so, `latest.json` at 
 
 | Measure | Result |
 |---|---|
-| Have a point / a TOID | 41,587,313 / 41,545,932 |
+| Have a point / a TOID | 41,584,574 / 41,540,888 |
 | Outline matched (TOID point + UPRN point) | 85.6% (85.2% + 0.4%); 14.4% none |
-| `methods_disagree` | 982 of 35,079,063 matched by both routes |
+| `methods_disagree` | 960 of 35,065,617 matched by both routes |
 | Street name | 91.1% |
 | In a parcel (INSPIRE or RoS) | 91.9% |
 | Have an EPC | 54.9% |
-| `outline_granularity` single / parcel_finer / shared / none | 4,579,585 / 19,807,866 / 11,230,386 / 5,975,290 |
+| `outline_granularity` single / parcel_finer / shared / none | 4,580,345 / 19,807,622 / 11,228,688 / 5,976,472 |
 
 Pilot, Islington (E09000019), 169,184 UPRNs: 80% of UPRNs share an outline with more than 20 others
 (median polygon 376 m2), 98.3% fall in a parcel, 93.5% have a street name.
 
 ## Licence
 
-OGL v3.0 for the OGL tables, with required attribution; ODbL and Overture terms as above. See [LICENCE.md](LICENCE.md).
+OGL v3.0, with required attribution; Microsoft and Overture terms as above. See [LICENCE.md](LICENCE.md).

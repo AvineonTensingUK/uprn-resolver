@@ -3,6 +3,15 @@
 Code versions of the `uprn-resolver` pipeline. Data releases are named by month (for example `2026-10`) and are
 described in each release's `README.md` and `release_manifest.json`.
 
+## 0.2.0 (2026-11-14)
+
+- **Lean release by default.** `publish` now ships only `resolved_open`, `uprn`, `buildings`, `parcels` and the
+  Microsoft footprints that are some UPRN's best outline, with `uprn_points`, `outlines_ogl` and `parcels` tiles.
+  The release is OGL apart from the labelled Microsoft footprints and Overture business names, with no
+  share-alike data. `publish --full` ships every table as before.
+- `publish` syncs with `--delete`, so the uploaded release folder matches the local one exactly.
+- First data release on Source Cooperative: `2026-11`, at `avineon-tensing/uprn-resolver`.
+
 ## 0.1.0 (2026-11-14)
 
 First public release of the pipeline.
