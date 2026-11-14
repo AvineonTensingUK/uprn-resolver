@@ -571,8 +571,8 @@ def _release_extras(args) -> int:
     """Add the extras to an already assembled release, then rewrite release_manifest.json (so it lists stac/,
     tiles/, ... too) and latest.json."""
     root = _release_root(args)
-    if not (root / "uprn").exists():
-        raise SystemExit(f"release-extras: {root} is not an assembled release (no uprn/)")
+    if not ((root / "uprn").exists() or (root / "uprn_links").exists()):
+        raise SystemExit(f"release-extras: {root} is not an assembled release (no uprn/ or uprn_links/)")
     pub = _mod("publish")
     if args.national_files:
         pub.write_national(root)

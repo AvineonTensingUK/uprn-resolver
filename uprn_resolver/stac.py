@@ -46,14 +46,14 @@ TABLES: dict[str, tuple[str, str, str, str]] = {
     # published names (single-file release, see names.PUBLIC_TABLES)
     "uprn_lookup": (
         "UPRN lookup (start here)",
-        "One row per UPRN: point, best outline and its confidence, street, local authority and LSOA, EPC type, "
-        "business name, quality. OGL core plus labelled Overture (poi_*) columns; no OSM.",
+        "Start here. The best answer for each UPRN, with its point, best outline and how specific it is, street, "
+        "local authority, EPC type and quality flags.",
         "other",
         "uprn_lookup/LICENCE.txt",
     ),
     "uprn_links": (
         "UPRN links",
-        "One row per UPRN: TOID, OS building, land parcel, USRN, street, OA / LSOA / MSOA, EPC and Price Paid ids.",
+        "Identifiers linked to each UPRN, including TOID, OS building, land parcel, USRN and census areas.",
         "OGL-UK-3.0",
         "LICENCE.md",
     ),

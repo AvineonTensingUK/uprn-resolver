@@ -811,13 +811,22 @@ def summarise_source_manifest(path: Path | None) -> dict:
     return {"manifest": path.name, "sha256": _sha256(path), "datasets": dict(sorted(ds.items()))}
 
 
+def _in_progress(p: Path) -> bool:
+    """A file still being written (tippecanoe's .partial archive and journal, our .tmp files): never listed."""
+    return ".partial." in p.name or p.name.endswith(("-journal", ".tmp"))
+
+
 def write_manifest(
     root: Path, release: str | None = None, source_manifest: Path | None = None, workers: int = 4
 ) -> dict:
     """Write ``<root>/release_manifest.json``: every file with size and sha256 (parquet also row count and row
     groups), plus source manifest versions. The manifest does not list itself. Returns the manifest dict."""
     root = Path(root)
-    paths = sorted(p for p in root.rglob("*") if p.is_file() and p.name != "release_manifest.json")
+    paths = sorted(
+        p
+        for p in root.rglob("*")
+        if p.is_file() and p.name != "release_manifest.json" and not _in_progress(p)
+    )
 
     def one(p: Path) -> dict:
         e = {"path": p.relative_to(root).as_posix(), "bytes": p.stat().st_size, "sha256": _sha256(p)}

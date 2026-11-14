@@ -246,7 +246,7 @@ published.
 | `land_parcels` | 21,118,570 | 3.5 GB |
 | `microsoft_buildings` | 2,914,012 | 0.4 GB |
 | `tiles/` (3 PMTiles archives) | | 7.2 GB |
-| **Whole release** | 3,518 files | **15.7 GB** |
+| **Whole release** | 27 files | **15.7 GB** |
 
 ### Checked against OpenStreetMap
 
