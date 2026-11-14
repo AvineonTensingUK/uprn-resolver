@@ -823,9 +823,7 @@ def write_manifest(
     groups), plus source manifest versions. The manifest does not list itself. Returns the manifest dict."""
     root = Path(root)
     paths = sorted(
-        p
-        for p in root.rglob("*")
-        if p.is_file() and p.name != "release_manifest.json" and not _in_progress(p)
+        p for p in root.rglob("*") if p.is_file() and p.name != "release_manifest.json" and not _in_progress(p)
     )
 
     def one(p: Path) -> dict:
