@@ -28,11 +28,29 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from .convert import _connect, _load_spatial, _q
+from .names import PUBLIC_SOURCES
 from .publish import _geom_expr
 
 ATTRIBUTION = "Contains OpenStreetMap data © OpenStreetMap contributors, ODbL-1.0 (aggregate statistics only)"
 MIN_SHARE = 0.5  # share of a mapped building's area that must lie inside an outline to count as inside it
+
+
+def _lad_file(base: Path, table: str, lad: str) -> Path:
+    """One LAD's file in a per-LAD release (``<table>/lad=X/<table>.parquet``) or in the pipeline output
+    (``lad=X/<table>.parquet``, e.g. ``data/out``)."""
+    f = base / table / f"lad={lad}" / f"{table}.parquet"
+    return f if f.exists() else base / f"lad={lad}" / f"{table}.parquet"
+
+
+def _all_files(base: Path, table: str) -> list[Path]:
+    return sorted((base / table).glob("lad=*/*.parquet")) or sorted(base.glob(f"lad=*/{table}.parquet"))
+
+
+def _lads(base: Path) -> list[str]:
+    return sorted({p.parent.name.removeprefix("lad=") for p in _all_files(base, "resolved_open")})
 
 
 def prepare(release: Path, parquet_dir: Path, work: Path, memory_limit: str = "4GB") -> dict:
@@ -55,7 +73,9 @@ def prepare(release: Path, parquet_dir: Path, work: Path, memory_limit: str = "4
                 WHERE uprn IS NOT NULL AND ST_Area(g) > 0
             ) TO {_q(work / "osm_tags.parquet")} (FORMAT parquet, COMPRESSION zstd)"""
         )
-        ro = f"read_parquet({_q(release / 'resolved_open' / 'lad=*' / '*.parquet')}, hive_partitioning=true)"
+        files = _all_files(release, "resolved_open")
+        hive = "lad" not in pq.read_schema(files[0]).names
+        ro = f"read_parquet({[str(f) for f in files]}, hive_partitioning={str(hive).lower()})"
         parcels = work / "parcels"
         parcels.mkdir(exist_ok=True)
         con.execute("SET threads=2")
@@ -87,7 +107,8 @@ def lad_rows(lad: str, release: Path, parquet_dir: Path, work: Path, memory_limi
     con = _connect(parquet_dir, memory_limit)
     try:
         _load_spatial(con)
-        rel = lambda t: release / t / f"lad={lad}" / f"{t}.parquet"  # noqa: E731
+
+        rel = lambda t: _lad_file(release, t, lad)  # noqa: E731
         con.execute(
             f"""CREATE TEMP TABLE ro AS SELECT uprn, best_outline_source AS src, best_outline_id AS outline_id,
                        outline_confidence AS conf
@@ -178,8 +199,18 @@ def summarise(work: Path, parquet_dir: Path) -> dict:
     return {
         "attribution": ATTRIBUTION,
         "min_share": MIN_SHARE,
-        "groups": [dict(zip(cols, r, strict=True)) for r in rows],
+        "groups": [_public(dict(zip(cols, r, strict=True))) for r in rows],
     }
+
+
+def _public(g: dict) -> dict:
+    """Published source names (as in the release's best_outline_source); parcels keep their parcel_source."""
+    src = g["source"]
+    if src in PUBLIC_SOURCES:
+        g = {**g, "source": PUBLIC_SOURCES[src]}
+        if src.endswith("_parcel"):
+            g["parcel_source"] = src
+    return g
 
 
 def run(
@@ -189,11 +220,12 @@ def run(
     out: Path,
     lads: list[str] | None = None,
     skip_existing: bool = True,
+    release_name: str | None = None,
 ) -> dict:
     """prepare (once), lad_rows per LAD (resumable), summarise; writes the summary JSON to ``out``."""
     if not (work / "osm_tags.parquet").exists() or not skip_existing:
         prepare(release, parquet_dir, work)
-    avail = sorted(p.name.removeprefix("lad=") for p in (release / "resolved_open").glob("lad=*"))
+    avail = _lads(release)
     res: dict = {"done": [], "skipped": [], "failed": {}}
     for lad in lads or avail:
         if skip_existing and (work / "rows" / f"lad={lad}.parquet").exists():
@@ -205,7 +237,7 @@ def run(
         except Exception as exc:  # noqa: BLE001 - keep going over LADs
             res["failed"][lad] = str(exc)
     summary = summarise(work, parquet_dir)
-    summary["release"] = release.name
+    summary["release"] = release_name or release.name
     summary["lads"] = len(res["done"]) + len(res["skipped"])
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=1))

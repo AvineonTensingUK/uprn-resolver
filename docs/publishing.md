@@ -40,7 +40,8 @@ Not found in docs: exact CLI install/commands, service-account setup. Ask hello@
 
 ## Release layout (built by `uprn_resolver.publish`)
 
-Hive-partitioned, one file per table per LAD (see `docs/format.md`):
+One file per table by default (`--per-lad`: hive-partitioned, one file per table per LAD, as below; see
+`docs/format.md`):
 
 ```
 <product>/

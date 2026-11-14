@@ -46,9 +46,10 @@ An open lookup table, one row per UPRN, covering England, Scotland and Wales. Fo
 - **Context:** the TOID and street (USRN and street name), census output area, LSOA and MSOA, local authority, EPC
   property type and built form, a business name where one matches, and HM Land Registry Price Paid sale IDs.
 
-It ships as two tables per UPRN (`resolved_open` to start with, `uprn` for more detail) and the shapes they point
-to (OS buildings, land parcels and a few Microsoft footprints), as GeoParquet with one file per local authority, a
-STAC catalogue for discovery and PMTiles for web maps. A typical lookup reads one small file over HTTPS; nothing needs to be downloaded in full.
+It ships as two tables per UPRN (`uprn_lookup` to start with, `uprn_links` for more detail) and the shapes they point
+to (OS buildings, land parcels and a few Microsoft footprints), as one GeoParquet file per table, a
+STAC catalogue for discovery and PMTiles for web maps. Queries read only the parts of a file they need over
+HTTPS; nothing needs to be downloaded in full.
 
 ## Why it exists
 

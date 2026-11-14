@@ -174,6 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument(
         "--full", action="store_true", help="ship every table (default: the lean release, publish.LEAN_TABLES)"
     )
+    pb.add_argument("--per-lad", action="store_true", help="one file per table per LAD (default: one file per table)")
     _release_extra_args(pb)
 
     re_ = sub.add_parser(
@@ -408,12 +409,13 @@ def _address(args) -> int:
 
 def _accuracy(args) -> int:
     res = _mod("accuracy").run(
-        _release_root(args),
+        _dirs(args)[2],  # the pipeline's per-LAD output (data/out): independent of the release layout and names
         args.data_dir / "parquet",
         args.data_dir / "tmp" / "accuracy",
         args.out or args.data_dir / "validation" / f"accuracy_{args.release}.json",
         lads=args.lad,
         skip_existing=not args.rebuild,
+        release_name=args.release,
     )
     for g in res["summary"]["groups"]:
         if g["source"] is None and g["building"] == "single":
@@ -557,6 +559,7 @@ def _release_kwargs(args) -> dict:
     if hasattr(args, "force"):
         kw["force"] = args.force
     kw["lean"] = not getattr(args, "full", False)
+    kw["single_file"] = not getattr(args, "per_lad", False)
     return kw
 
 

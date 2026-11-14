@@ -231,6 +231,9 @@ def test_publish_dry_run_default(monkeypatch):
     assert calls[0][2]["lean"] is True
     cli.main(["publish", "--release", "r", "--dest", "s3://a/b/", "--full"])
     assert calls[2][2]["lean"] is False
+    assert calls[0][2]["single_file"] is True
+    cli.main(["publish", "--release", "r", "--dest", "s3://a/b/", "--per-lad"])
+    assert calls[3][2]["single_file"] is False
 
 
 def test_national_validate(monkeypatch, capsys):

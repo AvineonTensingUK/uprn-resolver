@@ -9,6 +9,12 @@ described in each release's `README.md` and `release_manifest.json`.
   Microsoft footprints that are some UPRN's best outline, with `uprn_points`, `outlines_ogl` and `parcels` tiles.
   The release is OGL apart from the labelled Microsoft footprints and Overture business names, with no
   share-alike data. `publish --full` ships every table as before.
+- **One file per table.** Each table ships as a single Hilbert-sorted GeoParquet file (`<table>/<table>.parquet`,
+  with a `lad` column) instead of 350 per-authority files; `publish --per-lad` keeps the old layout.
+- **Plain table names in the release:** `uprn_lookup` (was `resolved_open`), `uprn_links` (`uprn`), `os_buildings`
+  (`buildings`), `land_parcels` (`parcels`) and `microsoft_buildings` (`outline_ms_buildings`), with matching
+  `best_outline_source` values and tile names. Internal pipeline names are unchanged (`uprn_resolver/names.py`).
+- `accuracy` reads the pipeline output (`data/out`), so it no longer depends on the release layout.
 - `publish` syncs with `--delete`, so the uploaded release folder matches the local one exactly.
 - First data release on Source Cooperative: `2026-11`, at `avineon-tensing/uprn-resolver`.
 

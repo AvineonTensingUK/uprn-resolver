@@ -45,10 +45,14 @@ converted with the OSTN15 grid (`uprn_resolver/bng.py`), never DuckDB's Helmert-
 | `resolved_local` | `resolved_open` plus postcode and best full address (EPC > OSM > partial) | restricted | **never** |
 | `address_local` | EPC address text | EPC-restricted | **never** |
 
+Published releases use plain names (`uprn_resolver/names.py`): `resolved_open` is `uprn_lookup`, `uprn` is
+`uprn_links`, `buildings` is `os_buildings`, `parcels` is `land_parcels` and `outline_ms_buildings` is
+`microsoft_buildings`; `best_outline_source` values become `os_building`, `land_parcel` and `microsoft_building`.
+
 `publish` ships the lean release by default (`publish.LEAN_TABLES`): the answer per UPRN and the shapes its best
 outline points to, plus `uprn_points`, `outlines_ogl` and `parcels` tiles. `publish --full` ships every table
-present. The release is hive-partitioned, one file per table per LAD, GeoParquet 1.1 with Hilbert ordering and a
-`bbox` covering column; see [docs/format.md](docs/format.md) and [CONTRACT.md](CONTRACT.md).
+present. Each table ships as one GeoParquet 1.1 file (`<table>/<table>.parquet`, Hilbert ordered, `bbox`
+covering column, `lad` column); `--per-lad` keeps one file per table per LAD instead; see [docs/format.md](docs/format.md) and [CONTRACT.md](CONTRACT.md).
 
 Scotland has parcels from Registers of Scotland INSPIRE (Land Register only, so gaps) and Scottish EPC;
 England & Wales EPC needs a GOV.UK One Login download. Northern Ireland has no open UPRNs: `ni` builds an
@@ -82,7 +86,7 @@ resolve    --lad X | --all [--rebuild] [--include-postcode]
 national   [--report FILE]                          # out/national/ roll-up and national.html
 validate   [--lad X ...] [--report-dir DIR]         # data/validation/report.html + results.json
 qa         --lad X [--report FILE]
-publish    --release R --dest s3://acct/product/ [--execute] [--full] [--stage-dir D] [--allow COL ...]   # dry run by default
+publish    --release R --dest s3://acct/product/ [--execute] [--full] [--per-lad] [--stage-dir D] [--allow COL ...]   # dry run by default
 ni         extract [--pbf UK.osm.pbf] | addresses
 lookup     UPRN [--local]                           # resolved_open row as JSON; --local reads resolved_local
 pipeline   --lad X | --all [--restage] [--rebuild] [--skip-extras]   # stage, build, extras, resolve, national, validate

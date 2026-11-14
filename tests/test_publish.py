@@ -620,3 +620,54 @@ def test_lean_release(out, tmp_path):
     assert ids.to_pylist() == ["m"]
     assert (root / "outline_ms_buildings" / "LICENCE.txt").exists()
     assert not (tmp_path / "rel" / ".ms_used").exists()
+
+
+def test_single_file_release(out, tmp_path):
+    """single_file: one Hilbert-sorted file per table under its public name, with a lad column, no lad=* folders,
+    public best_outline_source values, valid STAC."""
+    import duckdb
+
+    for lad, x0 in (("E1", 500000), ("E2", 600000)):
+        _write(
+            out / f"lad={lad}" / "resolved_open.parquet",
+            {
+                "uprn": [1, 0],
+                "geometry": _points(2, x0),
+                "street_name": ["a", "b"],
+                "street_source": ["os", "os"],
+                "locality": ["l", "m"],
+                "best_outline_source": ["openmap_building", "inspire_parcel"],
+                "poi_name": ["Shop", None],
+            },
+        )
+    P.assemble(out, "r", tmp_path / "rel", threads=1, lean=True, single_file=True)
+    root = tmp_path / "rel" / "r"
+    assert not list(root.glob("*/lad=*"))
+    assert {p.name for p in root.iterdir() if p.is_dir()} >= {"uprn_lookup", "uprn_links", "os_buildings"}
+    assert not (root / "resolved_open").exists() and not (root / "uprn").exists()
+    for t in ("uprn_links", "os_buildings", "uprn_lookup"):
+        f = root / t / f"{t}.parquet"
+        assert f.exists(), t
+        assert not P.validate_geoparquet(f), t
+    con = duckdb.connect()
+    lads = con.execute(
+        f"SELECT lad, count(*) FROM read_parquet('{root}/uprn_links/uprn_links.parquet') GROUP BY 1 ORDER BY 1"
+    )
+    assert lads.fetchall() == [("E1", 40), ("E2", 40)]
+    src = con.execute(
+        f"SELECT DISTINCT best_outline_source FROM read_parquet('{root}/uprn_lookup/uprn_lookup.parquet')"
+    )
+    assert sorted(r[0] for r in src.fetchall()) == ["land_parcel", "os_building"]
+    assert (root / "uprn_lookup" / "LICENCE.txt").exists()
+    assert "bytes" not in pq.read_schema(root / "lad_index.parquet").names
+    item = json.loads((root / "stac" / "uprn_links" / "uprn_links" / "uprn_links.json").read_text())
+    assert item["assets"]["data"]["href"].endswith("uprn_links/uprn_links.parquet")
+    assert not P.check_release_tree(root)
+
+
+def test_public_text_whole_names():
+    """Sidecar text gets the published file names, without mangling names that contain another table's name."""
+    text = "outline_ms_buildings.parquet, buildings.parquet, resolved_open.parquet, uprn.parquet, parcels.parquet"
+    assert P._public_text(text) == (
+        "microsoft_buildings.parquet, os_buildings.parquet, uprn_lookup.parquet, uprn_links.parquet, land_parcels.parquet"
+    )

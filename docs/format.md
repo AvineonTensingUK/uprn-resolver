@@ -4,7 +4,11 @@ Cloud-native GeoParquet 1.1, written by `uprn_resolver.publish.assemble` (design
 
 ## Layout
 
-One file per local authority (LAD) per table, hive-partitioned by `lad`. Coordinates are EPSG:27700 (metres).
+The published release (`publish`, default) has **one file per table**: `<table>/<table>.parquet`, Hilbert sorted
+with a `lad` column, written by `publish.flatten_release` from the per-LAD files below, under the public names in
+`uprn_resolver/names.py` (`uprn_lookup`, `uprn_links`, `os_buildings`, `land_parcels`, `microsoft_buildings`). The pipeline itself works
+per LAD, and `publish --per-lad` ships that layout instead: one file per local authority (LAD) per table,
+hive-partitioned by `lad`. Coordinates are EPSG:27700 (metres).
 
 ```
 <release>/
@@ -112,31 +116,32 @@ Filter on the covering struct, not on the geometry, so row groups are skipped fr
 ```sql
 INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;
 SELECT uprn, street_name, ST_AsText(geometry)
-FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn/lad=*/uprn.parquet',
-                  hive_partitioning = true)
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn/uprn.parquet')
 WHERE lad = 'E09000019'
   AND bbox.xmin <= 531000 AND bbox.xmax >= 530000
   AND bbox.ymin <= 185000 AND bbox.ymax >= 184000;
 ```
 
-(`lad=*` globbing needs S3 listing: with HTTP list files explicitly, or use `lad_index.parquet` to choose them.
-S3 form: `s3://<region>.opendata.source.coop/avineon-tensing/uprn-resolver/<release>/...`.)
+(For a `--per-lad` release, `lad=*` globbing needs S3 listing: with HTTP list files explicitly, or use
+`lad_index.parquet` to choose them. S3 form: `s3://<region>.opendata.source.coop/avineon-tensing/uprn-resolver/<release>/...`.)
 
 GeoPandas (`bbox` is a (xmin, ymin, xmax, ymax) tuple in the file CRS and uses the covering column):
 
 ```python
 import geopandas as gpd
 
-gdf = gpd.read_parquet("uprn/lad=E09000019/uprn.parquet", bbox=(530000, 184000, 531000, 185000))
+gdf = gpd.read_parquet("uprn/uprn.parquet", bbox=(530000, 184000, 531000, 185000))
 ```
 
 QGIS / GDAL >= 3.5 (Parquet driver required): add the file as a vector layer (`Layer > Add Vector Layer`); the
 CRS is read from the metadata and `bbox` is used for spatial filtering.
-`ogr2ogr -spat 530000 184000 531000 185000 out.gpkg uprn/lad=E09000019/uprn.parquet`.
+`ogr2ogr -spat 530000 184000 531000 185000 out.gpkg uprn/uprn.parquet`.
 
 ## Design decisions and evidence
 
-- **Per-LAD files**, not one national file or 14 regional ones. The build is per LAD, so a rebuild or fix touches one
+- **Per-LAD files while building; one national file per table when published** (2026-11: users found 350 files
+  per table harder to use than one file with a `lad` column, and Hilbert row-group pruning gives the same reads).
+  The original reasoning for per-LAD files: The build is per LAD, so a rebuild or fix touches one
   ~10-30 MB file (national file: rewrite ~1 GB); LAD is the natural user filter and hive-prunes at file level; ~360
   files of ~110k rows (average) is well under the ~2 GB guidance for spatial partitioning, and Hilbert order inside a file
   gives the spatial pruning. Regions (~3M rows, 300 MB) would reduce per-file footer requests for national scans;

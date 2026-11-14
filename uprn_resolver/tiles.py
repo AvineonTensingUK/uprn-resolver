@@ -27,6 +27,7 @@ import numpy as np
 import shapely
 
 from uprn_resolver import bng
+from uprn_resolver.names import public
 
 MIN_FREE_BYTES = 6 * 1024**3
 PRECISION = 7  # decimal degrees (~1 cm)
@@ -64,11 +65,11 @@ KINDS: dict[str, Kind] = {
         "FROM read_parquet('{path}') WHERE x IS NOT NULL AND y IS NOT NULL",
         (5, 16),
         OGL_ATTR,
-        "Open UPRN points (resolved_open): OGL v3.0 core",
+        "Open UPRN points (uprn_lookup): OGL v3.0 core",
         point=True,
     ),
     "ogl": Kind(
-        "outlines_ogl.pmtiles",
+        "os_buildings.pmtiles",
         "buildings",
         "outlines",
         ("building_id",),
@@ -78,7 +79,7 @@ KINDS: dict[str, Kind] = {
         "OS OpenMap Local building outlines (OGL v3.0)",
     ),
     "parcels": Kind(
-        "parcels.pmtiles",
+        "land_parcels.pmtiles",
         "parcels",
         "parcels",
         ("parcel_id", "parcel_source", "uprns_in_parcel", "parcel_area_m2"),
@@ -133,6 +134,12 @@ KINDS: dict[str, Kind] = {
 
 
 def lad_files(release: Path, table: str, prefix: str = "") -> list[Path]:
+    """The table's LAD files, or its single ``<table>/<table>.parquet`` in a single-file release (where ``prefix``
+    cannot select LADs, so a prefix gives no files)."""
+    for name in (public(table), table):
+        single = release / name / f"{name}.parquet"
+        if single.exists():
+            return [] if prefix else [single]
     return sorted(release.glob(f"{table}/lad={prefix}*/*.parquet"))
 
 

@@ -33,13 +33,49 @@ from . import bng
 PARQUET_MEDIA_TYPE = "application/vnd.apache.parquet"
 TABLE_EXT = "https://stac-extensions.github.io/table/v1.2.0/schema.json"
 PROJ_EXT = "https://stac-extensions.github.io/projection/v2.0.0/schema.json"
-GEO_KINDS = ("uprn", "buildings", "resolved_open", "parcels", "outline_ms_buildings", "outline_odbl_buildings")
+GEO_KINDS = (
+    "uprn", "buildings", "resolved_open", "parcels", "outline_ms_buildings", "outline_odbl_buildings",
+    "uprn_lookup", "uprn_links", "os_buildings", "land_parcels", "microsoft_buildings",
+)  # fmt: skip
 OGL_URL = "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
 
 # table -> (title, description, license id, licence file relative to the release root, spdx-ish URL or None)
 # SPDX ids: OGL-UK-3.0, ODbL-1.0, CDLA-Permissive-2.0. "various" = per-row mixed (Overture); "other" = OGL core +
 # third-party columns, see the linked LICENCE.txt.
 TABLES: dict[str, tuple[str, str, str, str]] = {
+    # published names (single-file release, see names.PUBLIC_TABLES)
+    "uprn_lookup": (
+        "UPRN lookup (start here)",
+        "One row per UPRN: point, best outline and its confidence, street, local authority and LSOA, EPC type, "
+        "business name, quality. OGL core plus labelled Overture (poi_*) columns; no OSM.",
+        "other",
+        "uprn_lookup/LICENCE.txt",
+    ),
+    "uprn_links": (
+        "UPRN links",
+        "One row per UPRN: TOID, OS building, land parcel, USRN, street, OA / LSOA / MSOA, EPC and Price Paid ids.",
+        "OGL-UK-3.0",
+        "LICENCE.md",
+    ),
+    "os_buildings": (
+        "OS buildings",
+        "OS OpenMap Local building outlines.",
+        "OGL-UK-3.0",
+        "LICENCE.md",
+    ),
+    "land_parcels": (
+        "Land parcels",
+        "HM Land Registry INSPIRE Index Polygons and Registers of Scotland cadastral parcels holding a UPRN.",
+        "OGL-UK-3.0",
+        "land_parcels/LICENCE.txt",
+    ),
+    "microsoft_buildings": (
+        "Microsoft buildings",
+        "Microsoft building footprints that are some UPRN's best outline.",
+        "CDLA-Permissive-2.0",
+        "microsoft_buildings/LICENCE.txt",
+    ),
+    # internal names (per-LAD release, publish --per-lad)
     "uprn": (
         "UPRN points",
         "One row per UPRN: point, TOID, building match, street, parcel, geographies.",
@@ -123,7 +159,12 @@ def bng_bbox_to_wgs84(bbox, n: int = 21) -> tuple[list[float], list[list[float]]
     t = np.linspace(0.0, 1.0, n)
     xs = np.concatenate([x0 + (x1 - x0) * t, np.full(n, x1), x1 - (x1 - x0) * t, np.full(n, x0)])
     ys = np.concatenate([np.full(n, y0), y0 + (y1 - y0) * t, np.full(n, y1), y1 - (y1 - y0) * t])
-    lon, lat = bng.bng_to_wgs84(xs, ys)
+    try:
+        lon, lat = bng.bng_to_wgs84(xs, ys)
+    except ValueError:  # a national extent's edges cross sea outside the OSTN15 grid: EPSG's Helmert is ample here
+        from pyproj import Transformer
+
+        lon, lat = Transformer.from_crs("EPSG:27700", "EPSG:4326", always_xy=True).transform(xs, ys)
     ring = [[round(float(a), 6), round(float(b), 6)] for a, b in zip(lon, lat, strict=True)]
     ring.append(ring[0])
     return [
@@ -163,8 +204,14 @@ def _lad_extents(root: Path) -> dict[str, list[float]]:
     return out
 
 
+def _table_files(root: Path, table: str) -> list[Path]:
+    """The table's data files: ``<table>/<table>.parquet`` in a single-file release, else one per LAD."""
+    single = root / table / f"{table}.parquet"
+    return [single] if single.exists() else sorted((root / table).glob("lad=*/*.parquet"))
+
+
 def _tables_present(root: Path) -> list[str]:
-    return [t for t in TABLES if (root / t).is_dir() and any((root / t).glob("lad=*/*.parquet"))]
+    return [t for t in TABLES if (root / t).is_dir() and _table_files(root, t)]
 
 
 def build_stac(root: Path, release: str | None = None, *, validate: bool = True) -> dict:
@@ -187,23 +234,25 @@ def build_stac(root: Path, release: str | None = None, *, validate: bool = True)
         title=f"UK UPRN open resolver {release}",
         description=(
             "Static STAC catalogue for a release of the UK UPRN open resolver: one Collection per table and one "
-            "Item per local authority (LAD) per table. Licences differ by table; see each Collection."
+            "Item per data file (the whole table, or one local authority). Licences differ by table; see each "
+            "Collection."
         ),
     )
     n_items = 0
     coll_list: list[tuple[pystac.Collection, list[tuple[pystac.Item, Path]]]] = []
     for table in tables:
         title, desc, lic, lic_file = TABLES[table]
-        files = sorted((root / table).glob("lad=*/*.parquet"))
+        files = _table_files(root, table)
+        single = len(files) == 1 and not files[0].parent.name.startswith("lad=")
         items: list[tuple[pystac.Item, Path]] = []
         boxes: list[list[float]] = []
         cols: list = []
         for f in files:
-            lad = f.parent.name.removeprefix("lad=")
+            lad = None if single else f.parent.name.removeprefix("lad=")
             info = _file_info(f)
             if not cols:
                 cols = [{"name": n, "type": t} for n, t in info["columns"]]
-            native = info["bbox"] or extents.get(lad)
+            native = info["bbox"] or (extents.get(lad) if lad else None)
             if native:
                 wbox, ring = bng_bbox_to_wgs84(native)
                 geom = {"type": "Polygon", "coordinates": [ring]}
@@ -211,8 +260,8 @@ def build_stac(root: Path, release: str | None = None, *, validate: bool = True)
             else:
                 wbox, geom = None, None
             props = {
-                "title": f"{title} - {lad}",
-                "lad": lad,
+                "title": title if single else f"{title} - {lad}",
+                **({} if single else {"lad": lad}),
                 "table:row_count": info["rows"],
                 "proj:code": "EPSG:27700",
             }
@@ -221,7 +270,7 @@ def build_stac(root: Path, release: str | None = None, *, validate: bool = True)
             if native:
                 props["proj:bbox"] = [float(v) for v in native]
             item = pystac.Item(
-                id=f"{table}-{lad}",
+                id=table if single else f"{table}-{lad}",
                 geometry=geom,
                 bbox=wbox,
                 datetime=when,
@@ -237,7 +286,12 @@ def build_stac(root: Path, release: str | None = None, *, validate: bool = True)
         coll = pystac.Collection(
             id=table,
             title=title,
-            description=f"{desc} Hive-partitioned by LAD (EPSG:27700).",
+            description=f"{desc} "
+            + (
+                "One GeoParquet file, Hilbert sorted, with a lad column (EPSG:27700)."
+                if single
+                else "Hive-partitioned by LAD (EPSG:27700)."
+            ),
             license=lic,
             extent=pystac.Extent(pystac.SpatialExtent([sbox]), pystac.TemporalExtent([[when, when]])),
             extra_fields={"table:columns": cols, "table:primary_geometry": "geometry"}

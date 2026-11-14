@@ -9,22 +9,22 @@ has no open UPRNs. Built by [uprn-resolver](https://github.com/AvineonTensingUK/
 
 ## Layout
 
-One file per table per local authority (LAD), hive-partitioned, so `lad=<code>` is a queryable column:
+One file per table, each with a `lad` column (local authority code):
 
 ```
-README.md  LICENCE.md  stats.json  accuracy.json  lad_index.parquet   (lad, n_uprn, xmin, ymin, xmax, ymax, bytes)
+README.md  LICENCE.md  stats.json  accuracy.json  lad_index.parquet   (lad, n_uprn, xmin, ymin, xmax, ymax)
 release_manifest.json                      every file with size, sha256, row count; source versions
-stac/                                      static STAC catalogue (catalog.json, collections, one item per LAD)
-tiles/                                     PMTiles: uprn_points, outlines_ogl, parcels (all OGL v3)
-resolved_open/lad=<code>/resolved_open.parquet + LICENCE.txt     GeoParquet 1.1, Point    OGL v3 + labelled Overture columns
-uprn/lad=<code>/uprn.parquet                                     GeoParquet 1.1, Point    OGL v3
-buildings/lad=<code>/buildings.parquet                           GeoParquet 1.1, Polygon  OGL v3
-parcels/lad=<code>/parcels.parquet + LICENCE.txt                 GeoParquet 1.1, Polygon  OGL v3 (HMLR INSPIRE, RoS)
-outline_ms_buildings/lad=<code>/outline_ms_buildings.parquet + LICENCE.txt  GeoParquet 1.1, Polygon  CDLA-Permissive-2.0
+stac/                                      static STAC catalogue (catalog.json, one collection and item per table)
+tiles/                                     PMTiles: uprn_points, os_buildings, land_parcels (all OGL v3)
+uprn_lookup/uprn_lookup.parquet + LICENCE.txt     GeoParquet 1.1, Point    OGL v3 + labelled Overture columns
+uprn_links/uprn_links.parquet                                     GeoParquet 1.1, Point    OGL v3
+os_buildings/os_buildings.parquet                           GeoParquet 1.1, Polygon  OGL v3
+land_parcels/land_parcels.parquet + LICENCE.txt                 GeoParquet 1.1, Polygon  OGL v3 (HMLR INSPIRE, RoS)
+microsoft_buildings/microsoft_buildings.parquet + LICENCE.txt  GeoParquet 1.1, Polygon  CDLA-Permissive-2.0
 ```
 
-The release is deliberately lean: the answer per UPRN (`resolved_open`, with more detail in `uprn`) and the shapes
-its best outline points to (`buildings`, `parcels`, `outline_ms_buildings`). Full EPC certificates, Price Paid
+The release is deliberately lean: the answer per UPRN (`uprn_lookup`, with more detail in `uprn_links`) and the
+shapes its best outline points to (`os_buildings`, `land_parcels`, `microsoft_buildings`). Full EPC certificates, Price Paid
 records, Overture places, the complete Microsoft footprint set and OpenStreetMap layers are free from their
 publishers, and the pipeline can rebuild them locally (`uprn-resolver publish --full` ships them all).
 
@@ -33,16 +33,15 @@ its `release_manifest.json` and `stac/catalog.json`. A release folder is immutab
 manifest's sha256 values to verify a download.
 
 Spatial files are sorted along a Hilbert curve and carry a per-row `bbox` covering column (GeoParquet 1.1);
-filter on `bbox.xmin/xmax/ymin/ymax` to skip row groups, and use `lad_index.parquet` to choose files by
-extent. Coordinates are British National Grid, EPSG:27700; geometry is WKB. Details: `docs/format.md` in the repository.
+filter on `bbox.xmin/xmax/ymin/ymax` to skip row groups, and filter on `lad` to read one local authority. Coordinates are British National Grid, EPSG:27700; geometry is WKB. Details: `docs/format.md` in the repository.
 
-Everything is OGL v3.0 (`parcels` with its own HMLR, OS and RoS statements) except two labelled parts:
-`outline_ms_buildings` (Microsoft footprints, CDLA-Permissive-2.0) and the `poi_*` columns of `resolved_open`
+Everything is OGL v3.0 (`land_parcels` with its own HMLR, OS and RoS statements) except two labelled parts:
+`microsoft_buildings` (Microsoft footprints, CDLA-Permissive-2.0) and the `poi_*` columns of `uprn_lookup`
 (Overture Maps, per provider: CDLA-Permissive-2.0 for most, Apache-2.0 for Foursquare, CC0-1.0 for AllThePlaces).
 No share-alike data is included. See `LICENCE.md`. `address_local`, `resolved_local` and `ppd_local` (full
 addresses, postcode) are never published.
 
-## uprn.parquet
+## uprn_links.parquet
 
 | Column | Type | Description |
 |---|---|---|
@@ -63,7 +62,7 @@ addresses, postcode) are never published.
 | street_name_alt | VARCHAR | Second street name for corner UPRNs with two USRNs |
 | locality | VARCHAR | Locality (OS Open Names), mostly the town or city |
 | street_method, usrn_count | VARCHAR, INTEGER | How the street name was derived; number of USRNs linked to the UPRN |
-| parcel_inspire_id | VARCHAR | Parcel containing the UPRN: HMLR INSPIRE (England & Wales) or Registers of Scotland; the polygon is in `parcels.parquet` (`parcel_id`) |
+| parcel_inspire_id | VARCHAR | Parcel containing the UPRN: HMLR INSPIRE (England & Wales) or Registers of Scotland; the polygon is in `land_parcels.parquet` (`parcel_id`) |
 | parcel_area_m2 | DOUBLE | Area of that parcel |
 | uprns_in_parcel | INTEGER | UPRNs in that parcel |
 | oa, lsoa, msoa | VARCHAR | Statistical geography codes (ONSUD) |
@@ -74,40 +73,41 @@ addresses, postcode) are never published.
 
 Postcode is only present in builds made with `--include-postcode`.
 
-## buildings.parquet
+## os_buildings.parquet
 
 | Column | Type | Description |
 |---|---|---|
 | building_id | VARCHAR | sha1 hex of the polygon WKB |
 | geometry | BLOB | Building polygon, WKB, EPSG:27700 |
 
-## parcels.parquet
+## land_parcels.parquet
 
 Land parcel polygons: HM Land Registry INSPIRE Index Polygons (England and Wales) and Registers of Scotland INSPIRE
-Cadastral Parcels. One row per parcel that contains at least one UPRN of the local authority; a parcel straddling
-two authorities appears in both files. This is the geometry behind `uprn.parcel_inspire_id`, and behind
-`resolved_open.best_outline_id` where `best_outline_source` is `inspire_parcel` or `ros_parcel`.
+Cadastral Parcels. One row per parcel that contains at least one UPRN, with the `lad` it was found in. This is the geometry behind
+`uprn_links.parcel_inspire_id`, and behind `uprn_lookup.best_outline_id` where `best_outline_source` is
+`land_parcel`.
 
 | Column | Type | Description |
 |---|---|---|
 | parcel_id | VARCHAR | INSPIRE ID (HMLR) or Registers of Scotland parcel ID |
-| parcel_source | VARCHAR | `inspire_parcel` or `ros_parcel` (the `resolved_open.best_outline_source` values) |
+| parcel_source | VARCHAR | `inspire_parcel` (HM Land Registry, England and Wales) or `ros_parcel` (Registers of Scotland) |
 | parcel_area_m2 | DOUBLE | Polygon area |
 | uprns_in_parcel | INTEGER | UPRNs of this local authority inside the parcel |
 | geometry | BLOB | Parcel polygon, WKB, EPSG:27700 |
 
 A parcel shows the indicative ground-level extent of a registered freehold title. It is not a building outline, and
 the legal extent of a title can only be established from the title plan. OGL v3.0; the HM Land Registry, Ordnance
-Survey and Registers of Scotland statements in `parcels/LICENCE.txt` must be carried with any reuse.
+Survey and Registers of Scotland statements in `land_parcels/LICENCE.txt` must be carried with any reuse.
 
 ```sql
 SELECT r.uprn, r.outline_confidence, p.geometry
-FROM read_parquet('<release>/resolved_open/lad=E09000019/resolved_open.parquet') r
-JOIN read_parquet('<release>/parcels/lad=E09000019/parcels.parquet') p
-  ON p.parcel_id = r.best_outline_id AND p.parcel_source = r.best_outline_source;
+FROM read_parquet('<release>/uprn_lookup/uprn_lookup.parquet') r
+JOIN read_parquet('<release>/land_parcels/land_parcels.parquet') p
+  ON p.parcel_id = r.best_outline_id
+WHERE r.best_outline_source = 'land_parcel';
 ```
 
-## resolved_open.parquet
+## uprn_lookup.parquet
 
 Best answer per UPRN. EPC bridge columns, all non-address OGL fields:
 
@@ -121,18 +121,18 @@ Best answer per UPRN. EPC bridge columns, all non-address OGL fields:
 
 EPC address data is not included; join on epc_lmk_key under the EPC data's own terms.
 
-## outline_ms_buildings.parquet
+## microsoft_buildings.parquet
 
 Microsoft GlobalMLBuildingFootprints polygons that are some UPRN's best outline (`best_outline_source =
-'ms_building'`, 11% of UPRNs), used where neither an OS OpenMap Local building nor a land parcel gives a
-specific answer: `ms_building_id` (join to `resolved_open.best_outline_id`), `area_m2`,
+'microsoft_building'`, 11% of UPRNs), used where neither an OS OpenMap Local building nor a land parcel gives a
+specific answer: `ms_building_id` (join to `uprn_lookup.best_outline_id`), `area_m2`,
 `geometry`. Attribution: "Building footprints © Microsoft, CDLA-Permissive-2.0"; see the folder's `LICENCE.txt`.
 
 ## stac/, release_manifest.json, latest.json, tiles/
 
-- `stac/`: static STAC catalogue (`stac/catalog.json`) with one collection per table and one item per LAD,
+- `stac/`: static STAC catalogue (`stac/catalog.json`) with one collection and one item per table,
   linking each Parquet file with its row count, schema (table extension) and extent. Browse it with any STAC client.
-- `accuracy.json`: an independent check of `resolved_open` against OpenStreetMap buildings tagged with a UPRN
+- `accuracy.json`: an independent check of `uprn_lookup` against OpenStreetMap buildings tagged with a UPRN
   (`ref:GB:uprn`), by `best_outline_source` x `outline_confidence`, split into buildings with one UPRN (`single`)
   or several (`multi`). `inside_pct`: at least half of the mapped building lies inside our outline.
   `exclusive_pct`: that, and no other tagged property has half its area inside our outline. Also the median
@@ -143,8 +143,8 @@ specific answer: `ms_building_id` (join to `resolved_open.best_outline_id`), `ar
   Parquet), per-table totals, and the versions of the source datasets used. It does not list itself.
 - `latest.json` (product root): `{"latest": "<release>", "path", "manifest", "stac", "updated"}`; read it to find
   the newest release.
-- `tiles/`: PMTiles vector tiles for web maps: `uprn_points` (zoom 5-16), `outlines_ogl` (OS OpenMap Local
-  buildings) and `parcels` (HMLR/RoS statements), both zoom 13-16, all OGL v3.0. The Parquet files remain the
+- `tiles/`: PMTiles vector tiles for web maps: `uprn_points` (zoom 5-16), `os_buildings` (OS OpenMap Local
+  buildings) and `land_parcels` (HMLR/RoS statements), both zoom 13-16, all OGL v3.0. The Parquet files remain the
   source of truth.
 - `CHANGELOG.json` / `CHANGELOG.md` and `national/<table>/part-NNNN.parquet` appear when a release is built with
   `--changelog-against` / `--national-files`.
@@ -157,7 +157,7 @@ specific answer: `ms_building_id` (join to `resolved_open.best_outline_id`), `ar
 - In dense urban areas an "outline" is effectively a block (Islington: median polygon 376 m², 80% of UPRNs
   share an outline with more than 20 others). Use `uprns_in_building`, `uprns_in_parcel` and
   `outline_granularity` to judge how specific a match is; parcels are usually finer.
-- Parcels: 91.9% of UPRNs nationally, with their polygons in `parcels.parquet`. Scottish parcels are Land Register only, so there are gaps; about 1.7% of Islington UPRNs fall in none.
+- Parcels: 91.9% of UPRNs nationally, with their polygons in `land_parcels.parquet`. Scottish parcels are Land Register only, so there are gaps; about 1.7% of Islington UPRNs fall in none.
 - Street name covers 91.1% of UPRNs nationally; the rest sit on roads missing from the Highways network
   (likely estate or private roads). There are no house numbers or names.
 - LIDS itself derives UPRN->TOID by point-in-polygon of the address seed, so TOID links inherit that error.
@@ -170,8 +170,8 @@ specific answer: `ms_building_id` (join to `resolved_open.best_outline_id`), `ar
 ```sql
 INSTALL spatial; LOAD spatial; INSTALL httpfs; LOAD httpfs;
 SELECT u.uprn, u.lsoa, u.match_method, ST_AsText(ST_GeomFromWKB(b.geometry))
-FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn/lad=E09000019/uprn.parquet') u
-JOIN read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/buildings/lad=E09000019/buildings.parquet') b
+FROM read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/uprn_links/uprn_links.parquet') u
+JOIN read_parquet('https://data.source.coop/avineon-tensing/uprn-resolver/<release>/os_buildings/os_buildings.parquet') b
   USING (building_id)
 WHERE u.uprn = 5300000000;
 ```

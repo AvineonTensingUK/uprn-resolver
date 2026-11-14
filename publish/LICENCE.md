@@ -1,16 +1,16 @@
 # Licence
 
 Almost everything in this release is under the Open Government Licence v3.0. Two labelled parts have their own
-open licences: Microsoft building footprints (`outline_ms_buildings/`, CDLA-Permissive-2.0) and the business name
-columns of `resolved_open/` (Overture Maps, per provider). No share-alike data is included.
+open licences: Microsoft building footprints (`microsoft_buildings/`, CDLA-Permissive-2.0) and the business name
+columns of `uprn_lookup/` (Overture Maps, per provider). No share-alike data is included.
 
 | Folder | Licence | Notes |
 |---|---|---|
-| `uprn/`, `buildings/` | OGL v3.0 | OGL core (OS, ONS, HMLR, RoS, EPC non-address fields) |
-| `parcels/` | OGL v3.0 | Land parcel polygons: HM Land Registry INSPIRE Index Polygons (England and Wales) and Registers of Scotland cadastral parcels. Needs the HM Land Registry, Ordnance Survey (AC0000851063) and Registers of Scotland statements below. `LICENCE.txt` |
-| `resolved_open/` | OGL v3.0 core + third-party columns | `poi_*` columns are Overture Places (per-provider licence in `poi_licence`); any Microsoft-derived outline ids/areas are CDLA-Permissive-2.0. Contains no OSM/ODbL data. `LICENCE.txt` |
-| `outline_ms_buildings/` | CDLA-Permissive-2.0 | Microsoft building footprints used as a best outline; `LICENCE.txt` |
-| `tiles/` | OGL v3.0 | Rendered from `resolved_open/`, `buildings/` and `parcels/`; same statements |
+| `uprn_links/`, `os_buildings/` | OGL v3.0 | OGL core (OS, ONS, HMLR, RoS, EPC non-address fields) |
+| `land_parcels/` | OGL v3.0 | Land parcel polygons: HM Land Registry INSPIRE Index Polygons (England and Wales) and Registers of Scotland cadastral parcels. Needs the HM Land Registry, Ordnance Survey (AC0000851063) and Registers of Scotland statements below. `LICENCE.txt` |
+| `uprn_lookup/` | OGL v3.0 core + third-party columns | `poi_*` columns are Overture Places (per-provider licence in `poi_licence`); any Microsoft-derived outline ids/areas are CDLA-Permissive-2.0. Contains no OSM/ODbL data. `LICENCE.txt` |
+| `microsoft_buildings/` | CDLA-Permissive-2.0 | Microsoft building footprints used as a best outline; `LICENCE.txt` |
+| `tiles/` | OGL v3.0 | Rendered from `uprn_lookup/`, `os_buildings/` and `land_parcels/`; same statements |
 | `accuracy.json` | ODbL-1.0 (Produced Work) | Aggregate statistics derived from OpenStreetMap; see section 2 |
 
 `address_local` and `resolved_local` (EPC address text, postcodes) are never part of a release.
@@ -63,13 +63,13 @@ Use the year of the release you are using (HM Land Registry: "year of supply or 
 | Contains GeoPlace data | ONS (UPRN products) | ONSUD-derived columns |
 | Source: Office for National Statistics ... | ONS | ONSUD-derived columns (oa, lsoa, msoa, lad) |
 | Contains HM Land Registry data ... | HMLR | `ppd_transaction_ids`, `inspire_ids` (look-up tables) |
-| This information is subject to Crown copyright ... permission of HM Land Registry. | HMLR INSPIRE conditions | England and Wales rows of `parcels/`; `parcel_inspire_id`, `parcel_area_m2`, `uprns_in_parcel` |
-| The polygons ... Ordnance Survey AC0000851063. | HMLR INSPIRE conditions (OS statement) | England and Wales rows of `parcels/` (the polygons themselves) and the columns derived from them |
+| This information is subject to Crown copyright ... permission of HM Land Registry. | HMLR INSPIRE conditions | England and Wales rows of `land_parcels/`; `parcel_inspire_id`, `parcel_area_m2`, `uprns_in_parcel` |
+| The polygons ... Ordnance Survey AC0000851063. | HMLR INSPIRE conditions (OS statement) | England and Wales rows of `land_parcels/` (the polygons themselves) and the columns derived from them |
 | UPRNs contain OS data ... | HMLR (Transaction ID <-> UPRN table) | `ppd_transaction_ids` |
-| © Crown copyright. Reproduced with the permission of Registers of Scotland. | RoS (catalogue record, spatialdata.gov.scot) | Scottish rows of `parcels/`; Scottish `parcel_inspire_id`, `parcel_area_m2`, `uprns_in_parcel` |
+| © Crown copyright. Reproduced with the permission of Registers of Scotland. | RoS (catalogue record, spatialdata.gov.scot) | Scottish rows of `land_parcels/`; Scottish `parcel_inspire_id`, `parcel_area_m2`, `uprns_in_parcel` |
 | Contains National Statistics data | OS Code-Point Open terms | Only if Code-Point Open derived postcode columns ship |
 
-`resolved_open` `street_name` / `locality` / `street_source` are OS Open Names / Open Roads values (OGL, OS
+`uprn_lookup` `street_name` / `locality` / `street_source` are OS Open Names / Open Roads values (OGL, OS
 statement); they are not address text from EPC, OSM or Royal Mail.
 
 ### Conditional or uncertain statements
@@ -98,24 +98,24 @@ statement); they are not address text from EPC, OSM or Royal Mail.
   (<https://spatialdata.gov.scot/geonetwork/srv/api/records/2c17e031-5b71-4580-bf44-dd5250cc92a6>) and the OGL link
   on the download page (<https://ros-inspire.themapcloud.com/>, "Terms and Conditions: Open Government Licence OGL3",
   read 2026-11-14). The catalogue record asks for both statements "on any product or report created from the
-  dataset". The Scottish polygons are shipped in `parcels/` on that basis.
+  dataset". The Scottish polygons are shipped in `land_parcels/` on that basis.
 - **ONSUD user guide.** The per-release user guide PDF (licence section and postcode attribution table)
   was not read; only the ONS licences page and FOI response were. **Unverified.**
 
 ## 2. OpenStreetMap (`accuracy.json` only)
 
 No OpenStreetMap data is in the tables or tiles. `accuracy.json` holds aggregate statistics from comparing
-`resolved_open` with OpenStreetMap buildings tagged with a UPRN; as a Produced Work under the
+`uprn_lookup` with OpenStreetMap buildings tagged with a UPRN; as a Produced Work under the
 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) (section 4.3) it carries the notice "Contains
 information from OpenStreetMap, © OpenStreetMap contributors, ODbL 1.0"
 (<https://www.openstreetmap.org/copyright>).
 
-## 3. Overture Maps Places (`poi_*` columns in `resolved_open/`)
+## 3. Overture Maps Places (`poi_*` columns in `uprn_lookup/`)
 
 Contains Places data from Overture Maps Foundation (<https://overturemaps.org>). Source:
 <https://docs.overturemaps.org/guides/places/>; per-provider licences and attribution:
 <https://docs.overturemaps.org/attribution/>. Licence depends on the provider of each record
-(`poi_licence`, and `resolved_open/LICENCE.txt` for the release in use):
+(`poi_licence`, and `uprn_lookup/LICENCE.txt` for the release in use):
 
 - CDLA-Permissive-2.0: Meta, Microsoft, PinMeTo, Krick, RenderSEO, DAC, BrightQuery, Birdeye, Uberall,
   OpenTravel Alliance.
@@ -128,7 +128,7 @@ The Places theme contains no OpenStreetMap data (per the Overture attribution pa
 The match (`poi_match_confidence`) is derived by uprn-resolver and is heuristic. The provider list above is from the repository's `poi.LICENCE.txt`; the
 Apache-2.0 NOTICE text itself was not retrieved here (**unverified**).
 
-## 4. Microsoft building footprints (`outline_ms_buildings/`, and ids in `resolved_open/`)
+## 4. Microsoft building footprints (`microsoft_buildings/`, and ids in `uprn_lookup/`)
 
 Contains Microsoft Building Footprints (GlobalMLBuildingFootprints), licensed under CDLA-Permissive-2.0
 (<https://cdla.dev/permissive-2-0/>). Source: <https://github.com/microsoft/GlobalMLBuildingFootprints>
@@ -141,7 +141,7 @@ The Microsoft data is taken from Microsoft's own files, not Overture's ODbL buil
 
 ## 5. INSPIRE index polygons
 
-The polygons of parcels that contain at least one UPRN are included in `parcels/`, with the INSPIRE ID, parcel area
+The polygons of parcels that contain at least one UPRN are included in `land_parcels/`, with the INSPIRE ID, parcel area
 and UPRN count per parcel. HM Land Registry's
 conditions (<https://use-land-property-data.service.gov.uk/datasets/inspire/#conditions>, read 2026-11-14) put the INSPIRE Index Polygons "and attributes" under the OGL and require
 the HM Land Registry statement above; anyone reusing the polygons or their geometry must also display the Ordnance

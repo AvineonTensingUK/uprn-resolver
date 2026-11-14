@@ -22,6 +22,8 @@ from pathlib import Path
 import duckdb
 import pyarrow.parquet as pq
 
+from .names import INTERNAL_TABLES, PUBLIC_SOURCES, PUBLIC_TABLES, internal
+
 ENDPOINT = "https://data.source.coop"
 PUBLISH_DIR = Path(__file__).resolve().parent.parent / "publish"
 FORBIDDEN = re.compile(r"address|street|thoroughfare|building_?name|saon|paon|locality|town|postcode", re.I)
@@ -414,7 +416,7 @@ def _used_ms_footprints(con, src: Path, tmp_dir: Path) -> Path:
     keep = (
         f"SELECT best_outline_id FROM read_parquet('{_q(ro)}', hive_partitioning=false) "
         "WHERE best_outline_source = 'ms_building'"
-        if ro.exists()
+        if ro.exists() and _has_file_col(con, ro, "best_outline_id")
         else "SELECT NULL::VARCHAR WHERE false"
     )
     con.execute(
@@ -537,7 +539,7 @@ def check_release_tree(root: Path) -> list[str]:
     (address text, OSM address candidates, ``*_local`` outline columns), whatever the file is called."""
     root = Path(root)
     problems: list[str] = []
-    known = {*GEO_TABLES, *OPTIONAL_GEO, *PLAIN_TABLES, ODBL_TABLE, "national"}
+    known = {*GEO_TABLES, *OPTIONAL_GEO, *PLAIN_TABLES, ODBL_TABLE, "national", *INTERNAL_TABLES}
     for f in sorted(root.rglob("*")):
         if not f.is_file():
             continue
@@ -593,12 +595,14 @@ def _assemble(
     changelog_against: Path | None = None,
     source_manifest: Path | None = None,
     lean: bool = False,
+    single_file: bool = False,
 ) -> list[Path]:
     """Write <stage_dir>/<release>/ from <out_dir>/lad=<code>/*.parquet and validate every file.
 
-    ``lean`` ships only ``LEAN_TABLES`` (the default for the ``publish`` command); otherwise every table present
-    ships. When ``outline_ms_buildings`` ships without ``outline_ms``, only the footprints that are some UPRN's
-    ``resolved_open`` best outline are written.
+    ``single_file`` replaces the per-LAD files with one file per table (``flatten_release``) before the STAC and
+    manifest are written. ``lean`` ships only ``LEAN_TABLES``; otherwise every table present ships (the
+    ``publish`` command defaults to lean, single-file). When ``outline_ms_buildings`` ships without
+    ``outline_ms``, only the footprints that are some UPRN's ``resolved_open`` best outline are written.
 
     Layout (hive partitioned by lad, one file per LAD per table). GeoParquet 1.1 (Hilbert, bbox covering):
     uprn/, buildings/, resolved_open/ (OGL; poi_* columns Overture, outline ids Microsoft), outline_ms_buildings/
@@ -728,7 +732,17 @@ def _assemble(
         files.append(root / name)
     assert not any(n in f.name or n in f.parts for f in files for n in NEVER_SHIP)
     assert not [f for f in root.rglob("*") if any(n in f.name or n in f.parts for n in NEVER_SHIP)]
-    if national_files:
+    if single_file:
+        flatten_release(root, memory_limit=memory_limit, threads=threads)
+        for f in root.glob("*/*.parquet"):
+            k = internal(f.parent.name)
+            if k in GEO_TABLES or k in OPTIONAL_GEO:
+                problems += validate_geoparquet(f, deep=deep_validate)
+            problems += validate_parquet(f, _table_allow(k, allow), require_geo=False, ogl=k in OGL_TABLES)
+        if problems:
+            raise PublishError("single-file validation failed:\n  " + "\n  ".join(problems))
+        files = [f for f in root.rglob("*") if f.is_file()]
+    if national_files and not single_file:
         files += write_national(root, memory_limit=memory_limit, threads=threads)
     if changelog_against:
         diff_releases(changelog_against, root, write=True)
@@ -759,6 +773,7 @@ NATIONAL_KEY = {
     "uprn": "uprn",
     "resolved_open": "uprn",
     "buildings": "building_id",
+    "parcels": "parcel_id",
     "outline_ms_buildings": "ms_building_id",
     "outline_odbl_buildings": "osm_building_id",
 }
@@ -854,12 +869,16 @@ def write_national(
     threads: int | None = None,
     part_bytes: int = NATIONAL_PART_BYTES,
     row_group_size: int = ROW_GROUP_SIZE,
+    single: bool = False,
 ) -> list[Path]:
     """Also write each geo table as national Hilbert-sorted GeoParquet(s) with bbox covering, for remote readers
     that want few requests: ``national/<table>/part-NNNN.parquet``. Split into contiguous Hilbert ranges (spatial
     partitions) when the LAD files exceed ``part_bytes`` (~2 GB). Features present in several LAD files (buildings
     straddling LADs) are deduplicated on their id. Reads the already-written LAD files in ``root``; needs scratch
-    disk about the size of the table (DuckDB spills to ``<root>/../.duck_tmp``)."""
+    disk about the size of the table (DuckDB spills to ``<root>/../.duck_tmp``).
+
+    ``single=True`` writes one file per table at ``<root>/<table>/<table>.parquet`` instead (no size split), adding a
+    ``lad`` column from the partition where the table has none; ``flatten_release`` then removes the LAD files."""
     root = Path(root)
     out: list[Path] = []
     tmp = root.parent / ".duck_tmp"
@@ -873,18 +892,19 @@ def write_national(
                 continue
             first = pq.read_schema(lads[0])
             geo = json.loads(first.metadata[b"geo"])
-            srcq = f"read_parquet('{_q(root / kind)}/lad=*/{kind}.parquet', hive_partitioning=false)"
+            srcq = f"read_parquet('{_q(root / kind)}/lad=*/{kind}.parquet', hive_partitioning=false, filename=true)"
+            lad = "" if "lad" in first.names else ", regexp_extract(filename, 'lad=([^/]+)/', 1) AS lad"
             key = NATIONAL_KEY[kind] if NATIONAL_KEY[kind] in first.names else "building_id"
             h = (
                 f"ST_Hilbert((bbox.xmin + bbox.xmax) / 2, (bbox.ymin + bbox.ymax) / 2, "
                 f"{{min_x: {e[0]}, min_y: {e[1]}, max_x: {e[2]}, max_y: {e[3]}}}::BOX_2D)"
             )
             con.execute(
-                f"CREATE OR REPLACE TEMP TABLE nat AS SELECT *, {h} AS _h FROM {srcq} "
+                f"CREATE OR REPLACE TEMP TABLE nat AS SELECT * EXCLUDE (filename){lad}, {h} AS _h FROM {srcq} "
                 + ("" if key == "uprn" else f'QUALIFY row_number() OVER (PARTITION BY "{key}") = 1')
             )
             total = sum(f.stat().st_size for f in lads)
-            parts = max(1, -(-total // part_bytes))
+            parts = 1 if single else max(1, -(-total // part_bytes))
             col = geo["columns"]["geometry"]
             bounds = (
                 [
@@ -907,7 +927,7 @@ def write_national(
                     )
                     or "true"
                 )
-                dst = root / "national" / kind / f"part-{i:04d}.parquet"
+                dst = root / kind / f"{kind}.parquet" if single else root / "national" / kind / f"part-{i:04d}.parquet"
                 x0, y0, x1, y1 = con.execute(
                     f"SELECT min(bbox.xmin), min(bbox.ymin), max(bbox.xmax), max(bbox.ymax) FROM nat WHERE {cond}"
                 ).fetchone()
@@ -927,6 +947,82 @@ def write_national(
         con.close()
         shutil.rmtree(tmp, ignore_errors=True)
     return out
+
+
+def flatten_release(root: Path, *, memory_limit: str = "8GB", threads: int | None = None) -> list[Path]:
+    """Turn an assembled per-LAD release into one file per table: ``<table>/<table>.parquet`` (Hilbert sorted,
+    bbox covering, ``lad`` column), keeping each folder's ``LICENCE.txt``, then delete the ``lad=*`` folders.
+    ``lad_index.parquet`` keeps each LAD's extent and UPRN count (its per-file ``bytes`` column is dropped)."""
+    root = Path(root)
+    geo_kinds = [k for k in (*GEO_TABLES, *OPTIONAL_GEO) if any((root / k).glob("lad=*/*.parquet"))]
+    plain = [k for k in (*PLAIN_TABLES, ODBL_TABLE) if any((root / k).glob("lad=*/*.parquet"))]
+    out = write_national(root, tuple(geo_kinds), memory_limit=memory_limit, threads=threads, single=True)
+    con = _connect(threads, memory_limit)
+    try:
+        for kind in plain:
+            src = f"read_parquet('{_q(root / kind)}/lad=*/{kind}.parquet', hive_partitioning=false, filename=true)"
+            names = pq.read_schema(next((root / kind).glob("lad=*/*.parquet"))).names
+            lad = "" if "lad" in names else ", regexp_extract(filename, 'lad=([^/]+)/', 1) AS lad"
+            dst = root / kind / f"{kind}.parquet"
+            _copy(con, f"SELECT * EXCLUDE (filename){lad} FROM {src}", dst, ROW_GROUP_SIZE)
+            out.append(dst)
+    finally:
+        con.close()
+    for kind in (*geo_kinds, *plain):
+        for d in (root / kind).glob("lad=*"):
+            shutil.rmtree(d)
+    idx = root / "lad_index.parquet"
+    if idx.exists():
+        t = pq.read_table(idx)
+        if "bytes" in t.column_names:
+            pq.write_table(t.drop(["bytes"]), idx, compression="zstd")
+    apply_public_names(root, memory_limit=memory_limit, threads=threads)
+    names = (PUBLIC_TABLES.get(f.parent.name, f.parent.name) for f in out)
+    return [root / n / f"{n}.parquet" for n in names]
+
+
+def _public_text(text: str) -> str:
+    """Internal table file names in a sidecar text -> published names (dropped tables' lines are kept as written)."""
+    text = text.replace("outline_ms_buildings.parquet", "microsoft_buildings.parquet")
+    text = text.replace("The per-UPRN columns in outline_ms.parquet are derived", "The links to UPRNs are derived")
+    for old, new in PUBLIC_TABLES.items():  # whole names only (\b: "_" is a word character)
+        text = re.sub(rf"\b{old}\.parquet", f"{new}.parquet", text)
+    return text
+
+
+def apply_public_names(root: Path, *, memory_limit: str = "8GB", threads: int | None = None) -> None:
+    """Single-file release: rename ``<table>/<table>.parquet`` (and its folder, with the ``LICENCE.txt``) to the
+    published names in ``names.PUBLIC_TABLES``, and rewrite ``best_outline_source`` with ``names.PUBLIC_SOURCES``."""
+    root = Path(root)
+    for old, new in PUBLIC_TABLES.items():
+        src = root / old / f"{old}.parquet"
+        if not src.exists():
+            continue
+        (root / old).rename(root / new)
+        lic = root / new / "LICENCE.txt"
+        if lic.exists():  # the LAD sidecars name the internal files
+            lic.write_text(_public_text(lic.read_text()))
+        src = root / new / f"{old}.parquet"
+        dst = root / new / f"{new}.parquet"
+        if old != "resolved_open":
+            src.rename(dst)
+            continue
+        whens = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in PUBLIC_SOURCES.items())
+        geo = pq.read_schema(src).metadata[b"geo"].decode()
+        con = _connect(threads, memory_limit)
+        try:
+            con.execute("SET preserve_insertion_order=true")
+            _copy(
+                con,
+                f"SELECT * REPLACE (CASE best_outline_source {whens} ELSE best_outline_source END "
+                f"AS best_outline_source) FROM read_parquet('{_q(src)}', hive_partitioning=false)",
+                dst,
+                ROW_GROUP_SIZE,
+                geo,
+            )
+        finally:
+            con.close()
+        src.unlink()
 
 
 def _glob(root: Path, kind: str) -> str | None:
