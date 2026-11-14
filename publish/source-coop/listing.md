@@ -108,7 +108,7 @@ Full statistics, by nation and by source, are in the README.
 The core is under the Open Government Licence v3.0, with attribution to Ordnance Survey, ONS, HM Land Registry,
 Registers of Scotland and the EPC registers. Microsoft, Overture and OpenStreetMap layers sit in separate folders
 under their own licences (CDLA-Permissive-2.0, per-provider Overture terms, ODbL). The code is open source under
-the MIT licence: [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver).
+the Apache License 2.0: [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver).
 
 A side project by staff at Avineon Tensing, not an official Avineon Tensing product, and not produced or endorsed by
 Ordnance Survey or the other data publishers. Questions and feedback: uk@avineon-tensing.com

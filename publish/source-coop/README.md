@@ -13,7 +13,7 @@ names or postcodes are published.
 - **Release:** `2026-10`, a one-off snapshot. There may be further releases; if so, `latest.json` will name the
   newest.
 - **Code and method:** [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver), open source under the
-  MIT licence
+  Apache License 2.0
 
 ## Why this exists
 
