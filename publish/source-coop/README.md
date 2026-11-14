@@ -12,7 +12,7 @@ names or postcodes are published.
 - **Format:** GeoParquet 1.1, one file per table per local authority, plus a STAC catalogue and PMTiles.
 - **Release:** `2026-10`, a one-off snapshot. There may be further releases; if so, `latest.json` will name the
   newest.
-- **Code and method:** [github.com/om2468/uprn-resolver](https://github.com/om2468/uprn-resolver), open source under the
+- **Code and method:** [github.com/AvineonTensingUK/uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver), open source under the
   MIT licence
 
 ## Why this exists

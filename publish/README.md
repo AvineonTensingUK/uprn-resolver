@@ -5,7 +5,7 @@ statistical geographies and HM Land Registry identifiers, for Great Britain (41,
 authorities). Only street name and locality are included in the OGL tables, never house number or name
 (Royal Mail / OS third-party rights); house numbers exist only in the separately licensed `streets_odbl`
 table. Parcels come from HMLR INSPIRE (England & Wales) and Registers of Scotland. Not Northern Ireland, which
-has no open UPRNs. Built by [uprn-resolver](https://github.com/om2468/uprn-resolver) (the repository's
+has no open UPRNs. Built by [uprn-resolver](https://github.com/AvineonTensingUK/uprn-resolver) (the repository's
 `RESEARCH.md` explains why this approach).
 
 ## Layout
