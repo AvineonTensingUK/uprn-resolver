@@ -1,0 +1,15 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS and tool caches
+.DS_Store
+.ruff_cache/
+
+# run logs (local paths, progress output)
+*.log
+
+# local map project (holds absolute local paths)
+uprn-resolver.rgis

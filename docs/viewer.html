@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UPRN tiles viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  html, body, #map { margin: 0; height: 100%; font: 13px system-ui, sans-serif; }
+  #panel { position: absolute; top: 8px; left: 8px; z-index: 2; background: #fffe; padding: 8px 10px; border-radius: 6px;
+           max-width: 270px; box-shadow: 0 1px 4px #0004; }
+  #panel label { display: block; margin: 2px 0; }
+  #panel input[type=text] { width: 100%; box-sizing: border-box; margin: 2px 0; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+  h1 { font-size: 14px; margin: 0 0 4px; }
+  small { color: #555; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>UPRN resolver tiles</h1>
+  <small>Base URL (https://... or relative) or pick local .pmtiles files.</small>
+  <input type="text" id="base" value="../data/release/2026-10/tiles/" aria-label="Base URL">
+  <input type="text" id="suffix" value="_E09" aria-label="Archive suffix (empty for national)">
+  <button id="load">Load</button>
+  <div><input type="file" id="files" accept=".pmtiles" multiple></div>
+  <hr>
+  <label><input type="checkbox" data-layer="uprn" checked> UPRN points (OGL)</label>
+  <label><input type="checkbox" data-layer="ogl" checked> OS OpenMap outlines (OGL)</label>
+  <label><input type="checkbox" data-layer="ms"> Microsoft outlines (CDLA-Permissive-2.0)</label>
+  <label><input type="checkbox" data-layer="odbl"> OSM outlines (ODbL, share-alike)</label>
+  <hr>
+  <small>Point colour = outline_confidence</small><br>
+  <span class="sw" style="background:#1a9850"></span>property
+  <span class="sw" style="background:#fdae61"></span>small_group
+  <span class="sw" style="background:#d73027"></span>block
+  <span class="sw" style="background:#777"></span>none
+  <div id="attr"><small></small></div>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
+<script>
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+const ARCHIVES = {
+  uprn: ["uprn_points", "uprn"], ogl: ["outlines_ogl", "outlines"],
+  ms: ["outlines_ms", "outlines"], odbl: ["outlines_odbl", "outlines"],
+};
+const OUTLINE_STYLE = { ogl: "#2166ac", ms: "#7b3294", odbl: "#e08214" };
+const map = new maplibregl.Map({
+  container: "map", center: [-0.1, 51.53], zoom: 13, maxZoom: 20,
+  style: { version: 8, sources: { osm: { type: "raster", tileSize: 256, maxzoom: 19,
+    tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], attribution: "© OpenStreetMap contributors (basemap only)" } },
+    layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-opacity": 0.6 } }] },
+});
+map.addControl(new maplibregl.NavigationControl());
+const localFiles = {};
+
+function sourceUrl(key) {
+  const [stem] = ARCHIVES[key], suffix = document.getElementById("suffix").value.trim();
+  const name = stem + suffix + ".pmtiles";
+  if (localFiles[name]) {
+    const f = new pmtiles.PMTiles(new pmtiles.FileSource(localFiles[name]));
+    protocol.add(f);
+    return "pmtiles://" + f.source.getKey();
+  }
+  let base = document.getElementById("base").value.trim();
+  if (base && !base.endsWith("/")) base += "/";
+  return "pmtiles://" + new URL(base + name, location.href).href;
+}
+
+function addLayers() {
+  for (const key of Object.keys(ARCHIVES)) {
+    for (const id of [key, key + "-line"]) if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(key)) map.removeSource(key);
+    map.addSource(key, { type: "vector", url: sourceUrl(key) });
+    const layer = ARCHIVES[key][1];
+    if (key === "uprn") {
+      map.addLayer({ id: key, type: "circle", source: key, "source-layer": layer, paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3, 19, 6],
+        "circle-color": ["match", ["get", "outline_confidence"], "property", "#1a9850", "small_group", "#fdae61",
+          "block", "#d73027", "#777"],
+        "circle-stroke-width": 0.5, "circle-stroke-color": "#fff" } });
+    } else {
+      map.addLayer({ id: key, type: "fill", source: key, "source-layer": layer, minzoom: 13,
+        paint: { "fill-color": OUTLINE_STYLE[key], "fill-opacity": 0.2 } });
+      map.addLayer({ id: key + "-line", type: "line", source: key, "source-layer": layer, minzoom: 13,
+        paint: { "line-color": OUTLINE_STYLE[key], "line-width": 1 } });
+    }
+  }
+  applyToggles();
+}
+function applyToggles() {
+  document.querySelectorAll("[data-layer]").forEach((cb) => {
+    const k = cb.dataset.layer, vis = cb.checked ? "visible" : "none";
+    for (const id of [k, k + "-line"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+  });
+  const on = [...document.querySelectorAll("[data-layer]:checked")].map((c) => c.dataset.layer);
+  document.querySelector("#attr small").textContent = on.map((k) => ({
+    uprn: "UPRN: Contains OS data © Crown copyright, OGL v3.0.", ogl: "Outlines: OS data © Crown copyright, OGL v3.0.",
+    ms: "Microsoft footprints: CDLA-Permissive-2.0.", odbl: "OSM outlines: © OpenStreetMap contributors, ODbL-1.0 (share-alike).",
+  }[k])).join(" ");
+}
+document.querySelectorAll("[data-layer]").forEach((cb) => cb.addEventListener("change", applyToggles));
+document.getElementById("load").onclick = () => map.loaded() && addLayers();
+document.getElementById("files").onchange = (e) => {
+  for (const f of e.target.files) localFiles[f.name] = f;
+  addLayers();
+};
+map.on("load", addLayers);
+map.on("click", (e) => {
+  const feats = map.queryRenderedFeatures(e.point).filter((f) => f.source in ARCHIVES);
+  if (!feats.length) return;
+  const rows = Object.entries(feats[0].properties).map(([k, v]) => `<b>${k}</b>: ${String(v).replace(/</g, "&lt;")}`);
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(rows.join("<br>")).addTo(map);
+});
+</script>
+</body>
+</html>
