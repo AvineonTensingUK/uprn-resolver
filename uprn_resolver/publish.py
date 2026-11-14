@@ -596,6 +596,7 @@ def _assemble(
     source_manifest: Path | None = None,
     lean: bool = False,
     single_file: bool = False,
+    stac_base_url: str | None = None,
 ) -> list[Path]:
     """Write <stage_dir>/<release>/ from <out_dir>/lad=<code>/*.parquet and validate every file.
 
@@ -750,7 +751,7 @@ def _assemble(
     if stac:
         from .stac import build_stac
 
-        res = build_stac(root, release)
+        res = build_stac(root, release, base_url=stac_base_url)
         if res.get("invalid") or res.get("missing_assets"):
             raise PublishError(f"STAC validation failed: {res.get('invalid') or res['missing_assets'][:5]}")
         files += [p for p in (root / "stac").rglob("*") if p.is_file()]
@@ -1135,6 +1136,11 @@ def _changelog_md(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def public_url(dest: str, release: str) -> str:
+    """s3://<account>/<product>/ -> the release folder's public URL on the Source Cooperative data proxy."""
+    return f"{ENDPOINT}/{dest.removeprefix('s3://').strip('/')}/{release}/"
+
+
 def publish(
     out_dir: Path,
     release: str,
@@ -1153,6 +1159,7 @@ def publish(
     if not dest.startswith("s3://"):
         raise PublishError("dest must look like s3://<account>/<product>/")
     stage_dir = Path(stage_dir) if stage_dir else out_dir.parent / "release"
+    assemble_kwargs.setdefault("stac_base_url", public_url(dest, release))
     files = assemble(out_dir, release, stage_dir, allow, **assemble_kwargs)
     target = dest.rstrip("/") + f"/{release}/"
     # --delete: the remote release folder ends up identical to the local one (no leftovers from an earlier upload)

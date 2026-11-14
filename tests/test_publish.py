@@ -671,3 +671,12 @@ def test_public_text_whole_names():
     assert P._public_text(text) == (
         "microsoft_buildings.parquet, os_buildings.parquet, uprn_lookup.parquet, uprn_links.parquet, land_parcels.parquet"
     )
+
+
+def test_public_url_and_absolute_licence_links(out, tmp_path):
+    """publish derives the release's public URL from dest; STAC licence links become absolute with it."""
+    assert P.public_url("s3://acct/prod/", "r") == "https://data.source.coop/acct/prod/r/"
+    P.assemble(out, "r", tmp_path / "rel", threads=1, stac_base_url="https://data.source.coop/acct/prod/r/")
+    c = json.loads((tmp_path / "rel" / "r" / "stac" / "resolved_open" / "collection.json").read_text())
+    lic = [x["href"] for x in c["links"] if x["rel"] == "license" and x["href"].startswith("https://data.source.coop")]
+    assert lic == ["https://data.source.coop/acct/prod/r/resolved_open/LICENCE.txt"]

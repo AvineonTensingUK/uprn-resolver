@@ -214,12 +214,14 @@ def _tables_present(root: Path) -> list[str]:
     return [t for t in TABLES if (root / t).is_dir() and _table_files(root, t)]
 
 
-def build_stac(root: Path, release: str | None = None, *, validate: bool = True) -> dict:
+def build_stac(root: Path, release: str | None = None, *, validate: bool = True, base_url: str | None = None) -> dict:
     """Write ``<root>/stac/`` for the release at ``root`` (adds files only; parquet is read, never rewritten).
 
-    Returns a summary ``{"collections", "items", "files", "validated", "validation_error"}``. ``validate`` runs
-    ``pystac`` validation of every object (fetches the extension JSON schemas over HTTP; if that is impossible the
-    error is reported in ``validation_error`` and the catalogue is still written).
+    ``base_url`` (the release folder's public URL, e.g. ``https://data.source.coop/<acct>/<product>/<release>/``)
+    makes the licence links absolute: some STAC browsers resolve relative links outside the catalogue against
+    their own site. Returns a summary ``{"collections", "items", "files", "validated", "validation_error"}``.
+    ``validate`` runs ``pystac`` validation of every object (fetches the extension JSON schemas over HTTP; if that is
+    impossible the error is reported in ``validation_error`` and the catalogue is still written).
     """
     root = Path(root)
     release = release or root.name
@@ -302,7 +304,7 @@ def build_stac(root: Path, release: str | None = None, *, validate: bool = True)
         coll.links.append(
             pystac.Link(
                 "license",
-                f"../../{lic_file}",
+                f"{base_url.rstrip('/')}/{lic_file}" if base_url else f"../../{lic_file}",
                 media_type="text/markdown" if lic_file.endswith(".md") else "text/plain",
                 title="Licence of this table",
             )

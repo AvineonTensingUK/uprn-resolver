@@ -185,6 +185,12 @@ def build_parser() -> argparse.ArgumentParser:
     re_.add_argument("--release", required=True, help="release folder name, e.g. 2026-10")
     re_.add_argument("--stage-dir", type=Path, default=None, help="default: <data-dir>/release")
     _release_extra_args(re_)
+    re_.add_argument(
+        "--base-url",
+        default=None,
+        help="public URL of the release folder (absolute STAC licence links), e.g. "
+        "https://data.source.coop/<acct>/<product>/<release>/",
+    )
     re_.add_argument("--tiles", action="store_true", help="also build tiles/*.pmtiles (needs tippecanoe, scratch disk)")
 
     cg = sub.add_parser("changelog", help="UPRN-level diff of two releases -> CHANGELOG.json/.md in the new one")
@@ -580,7 +586,7 @@ def _release_extras(args) -> int:
         pub.diff_releases(args.changelog_against, root, write=True)
     rc = 0
     if not args.no_stac:
-        res = _mod("stac").build_stac(root, args.release)
+        res = _mod("stac").build_stac(root, args.release, base_url=args.base_url)
         if res.get("invalid") or res.get("missing_assets"):
             print(f"STAC validation failed: {res.get('invalid') or res['missing_assets'][:5]}", file=sys.stderr)
             rc = 1
